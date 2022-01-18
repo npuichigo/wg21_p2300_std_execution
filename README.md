@@ -20,7 +20,7 @@ mkdir -p build
 pushd build
 
 # Install dependencies
-conan install .. --build=missing -s build_type=Release
+conan install .. --build=missing -pr ../conan_profile
 
 # Do the actual build
 cmake -G<gen> -D CMAKE_BUILD_TYPE=Release ..

@@ -35,11 +35,6 @@ message(STATUS "Build date       : ${P2300_BUILD_DATE}")
 message(STATUS "Build year       : ${P2300_BUILD_YEAR}")
 message(STATUS)
 
-# Set library version
-set_target_properties(P2300 PROPERTIES
-                      VERSION "${P2300_VERSION}"
-                      SOVERSION "${P2300_VERSION_MAJOR}")
-
 # Declare the public include directories
 target_include_directories(P2300 INTERFACE
                            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include/>
