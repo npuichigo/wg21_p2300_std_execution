@@ -3,7 +3,8 @@
         {
             "name": "Linux",
             "includePath": [
-                "${workspaceFolder}/include"
+                "${workspaceFolder}/include",
+                "/usr/lib/llvm-12/include/c++/v1/"
             ],
             "defines": [],
             "compilerPath": "/usr/bin/clang",
