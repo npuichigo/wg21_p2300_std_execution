@@ -120,4 +120,7 @@ namespace std {
     concept __is_instance_of =
       __is_instance_of_<_Ty, _T>;
 
+  template <class...>
+    concept __typename = true;
+
 } // namespace std
