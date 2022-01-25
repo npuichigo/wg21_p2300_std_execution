@@ -1027,7 +1027,7 @@ The authors are aware of a number of other implementations of sender/receiver fr
 
     The sender/receiver implementation in HPX has been under active development since May 2020. It is used to erase the overhead of futures and to make it possible to write efficient generic asynchronous algorithms that are agnostic to their execution context. In HPX, algorithms can migrate execution between execution contexts, even to GPUs and back, using a uniform standard interface with sender/receiver.
 
-    Far and away, the HPX team has the greatest usage experience outside Facebook. Mikael Simburg summarizes the experience as follows:
+    Far and away, the HPX team has the greatest usage experience outside Facebook. Mikael Simberg summarizes the experience as follows:
 
     > Summarizing, for us the major benefits of sender/receiver compared to the old model are:
     >
@@ -3510,7 +3510,7 @@ explicit in_place_stop_callback(in_place_stop_token st, C&& cb)
     <td>allow the specialization of the provided sender algorithms</td>
     <td>
         <ul>
-            <li>sender factories (`just`, `just_error`, `just_stopped`, ...)</li>
+            <li>sender factories (`schedule`, `transfer_just`, `read`, ...)</li>
             <li>sender adaptors (`transfer`, `then`, `let_value`, ...)</li>
             <li>sender consumers (`start_detached`, `sync_wait`)</li>
         </ul>
@@ -4459,6 +4459,8 @@ is undefined.
           name the same type as `error_types_of_t<S, no_env, Variant2>`, and
       * `completion_signatures_of_t<S, E>::sends_stopped` shall have the same
           value as `completion_signatures_of_t<S, no_env>::sends_stopped`.
+10. [<i>Note</i>: The types <code>Args<i><sub>i</sub></i>...</code> and <code>E<i><sub>i</sub></i>...</code> captured in `value_types` and `error_types` can appear in any order. 
+For example, a sender that can yield, in case of an error, either `exception_ptr` or `error_code` can have `error_types` be either `Variant<exception_ptr, error_code>` or `Variant<error_code, exception_ptr>`. --<i>end note</i>]
 
 #### `dependent_completion_signatures` <b>[exec.depsndtraits]</b> #### {#spec-exec.depsndtraitst}
 
@@ -4624,13 +4626,13 @@ template &lt;class E>
 
       template&lt;receiver R>
         requires receiver_of&lt;R, Ts...> && (copy_constructible&ltTs> &&...)
-      friend operation_state&lt;decay_t<R>> tag_invoke(connect_t, const <i>just-sender</i>& j, R && r) {
+      friend operation_state&lt;decay_t&lt;R>> tag_invoke(connect_t, const <i>just-sender</i>& j, R && r) {
         return { j.vs_, std::forward&lt;R>(r) };
       }
 
       template&lt;receiver R>
         requires receiver_of&lt;R, Ts...>
-      friend operation_state&lt;decay_t<R>> tag_invoke(connect_t, <i>just-sender</i>&& j, R && r) {
+      friend operation_state&lt;decay_t&lt;R>> tag_invoke(connect_t, <i>just-sender</i>&& j, R && r) {
         return { std::move(j.vs_), std::forward&lt;R>(r) };
       }
     };
@@ -4876,7 +4878,7 @@ are all well-formed.
 
 #### `execution::on` <b>[exec.on]</b> #### {#spec-execution.senders.adapt.on}
 
-1. `execution::on` is used to adapt a sender in a sender that will start the input sender on an execution agent belonging to a specific execution context.
+1. `execution::on` is used to adapt a sender into a sender that will start the input sender on an execution agent belonging to a specific execution context.
 
 2. The name `execution::on` denotes a customization point object. For some subexpressions `sch` and `s`, let `Sch` be `decltype((sch))` and `S` be `decltype((s))`. If `Sch` does not satisfy `execution::scheduler`, or `S` does not satisfy `execution::sender`,
     `execution::on` is ill-formed. Otherwise, the expression `execution::on(sch, s)` is expression-equivalent to:
@@ -4937,7 +4939,7 @@ are all well-formed.
 
 #### `execution::schedule_from` <b>[exec.schedule_from]</b> #### {#spec-execution.senders.adaptors.schedule_from}
 
-1. `execution::schedule_from` is used to schedule work dependent on the completion of a sender onto a scheduler's associated execution context. [<i>Note</i>: `schedule_from` is not meant to be used in user code; they are used in the implementation of
+1. `execution::schedule_from` is used to schedule work dependent on the completion of a sender onto a scheduler's associated execution context. [<i>Note</i>: `schedule_from` is not meant to be used in user code; it is used in the implementation of
     `transfer`. -<i>end note</i>]
 
 3. The name `execution::schedule_from` denotes a customization point object. For some subexpressions `sch` and `s`, let `Sch` be `decltype((sch))` and `S` be `decltype((s))`. If `Sch` does not satisfy `execution::scheduler`, or `S` does not satisfy
