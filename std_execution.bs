@@ -2,7 +2,7 @@
 Title: `std::execution`
 H1: <code>std::execution</code>
 Shortname: D2300
-Revision: 4
+Revision: 5
 Status: D
 Group: WG21
 Audience: SG1, LEWG
@@ -20,7 +20,7 @@ Metadata Order: Editor, This Version, Source, Issue Tracking, Project, Audience
 Markup Shorthands: markdown yes
 Toggle Diffs: no
 No Abstract: yes
-Default Biblio Display: direct
+Default Biblio Display: inline
 </pre>
 
 <style>
@@ -481,9 +481,15 @@ class _then_receiver
   friend exec::receiver_adaptor<_then_receiver, R>;
   F f_;
 
+  template <class... As>
+  using _completions =
+    exex::completion_signatures<
+      exec::set_value_t(std::invoke_result_t<F, As...>),
+      exec::set_error_t(std::exception_ptr)>;
+
   // Customize set_value by invoking the callable and passing the result to the inner receiver
   template<class... As>
-    requires exec::receiver_of<R, std::invoke_result_t<F, As...>>
+    requires exec::receiver_of<R, _completions<As...>>
   void set_value(As&&... as) && noexcept try {
     exec::set_value(std::move(*this).base(), std::invoke((F&&) f_, (As&&) as...));
   } catch(...) {
@@ -502,7 +508,7 @@ struct _then_sender {
   F f_;
 
   // Connect:
-  template<exec::receiver R>
+  template<class R>
     requires exec::sender_to<S, _then_receiver<R, F>>
   friend auto tag_invoke(exec::connect_t, _then_sender&& self, R r)
     -> exec::connect_result_t<S, _then_receiver<R, F>> {
@@ -619,7 +625,7 @@ struct _retry_sender {
   S s_;
   explicit _retry_sender(S s) : s_((S&&) s) {}
 
-  template<exec::receiver R>
+  template<class R>
     requires exec::sender_to<S&, R>
   friend _op<S, R> tag_invoke(exec::connect_t, _retry_sender&& self, R r) {
     return {(S&&) self.s_, (R&&) r};
@@ -632,7 +638,7 @@ struct _retry_sender {
   template <class Env>
   friend auto tag_invoke(exec::get_completion_signatures_t, const _retry_sender&, Env)
     -> exec::make_completion_signatures<
-        const S&, Env,
+        S&, Env,
         exec::completion_signatures<exec::set_error_t(std::exception_ptr)>,
         _value, _void>;
 };
@@ -699,7 +705,7 @@ class inline_scheduler {
         std::execution::set_value_t(),
         std::execution::set_error_t(std::exception_ptr)>;
 
-    template <std::execution::receiver_of R>
+    template <class R>
       friend auto tag_invoke(std::execution::connect_t, _sender, R&& rec)
         noexcept(std::is_nothrow_constructible_v<std::remove_cvref_t<R>, R>)
         -> _op<std::remove_cvref_t<R>> {
@@ -1072,14 +1078,34 @@ This proposal also draws heavily from our experience with [Thrust](https://githu
 
 # Revision history # {#revisions}
 
+## R5 ## {#r5}
+
+The changes since R4 are as follows:
+
+<b>Fixes:</b>
+
+  * `start_detached` requires its argument to be a `void` sender (sends no values
+    to `set_value`).
+
+<b>Enhancements:</b>
+
+  * Receiver concepts refactored to no longer require an error channel for
+    `exception_ptr` or a stopped channel.
+  * `sender_of` concept and `connect` customization point additionally require
+    that the receiver is capable of receiving all of the sender's possible
+    completions.
+  * `get_completion_signatures` is now required to return an instance of either
+    `completion_signatures` or `dependent_completion_signatures`.
+  * `make_completion_signatures` made more general.
+
 ## R4 ## {#r4}
 
 The changes since R3 are as follows:
 
 <b>Fixes:</b>
 
-  * Fix specification of `get_completion_scheduler` on the `transfer`, `schedule_from` 
-    and `transfer_when_all` algorithms; the completion scheduler cannot be guaranteed 
+  * Fix specification of `get_completion_scheduler` on the `transfer`, `schedule_from`
+    and `transfer_when_all` algorithms; the completion scheduler cannot be guaranteed
     for `set_error`.
   * The value of `sends_stopped` for the default sender traits of types that are
     generally awaitable was changed from `false` to `true` to acknowledge the
@@ -1375,20 +1401,20 @@ The following conventions are used throughout the design section:
 
 ## Queries and algorithms ## {#design-queries-and-algorithms}
 
-A <dfn>query</dfn> is a `std::invocable` that takes some set of objects (usually one) as parameters and returns facts about those objects without modifying them. Queries are usually customization point objects, but in some cases may be functions.
+A <dfn export=true>query</dfn> is a `std::invocable` that takes some set of objects (usually one) as parameters and returns facts about those objects without modifying them. Queries are usually customization point objects, but in some cases may be functions.
 
-An <dfn>algorithm</dfn> is a `std::invocable` that takes some set of objects as parameters and causes those objects to do something. Algorithms are usually customization point objects, but in some cases may be functions.
+An <dfn export=true>algorithm</dfn> is a `std::invocable` that takes some set of objects as parameters and causes those objects to do something. Algorithms are usually customization point objects, but in some cases may be functions.
 
 # Design - user side # {#design-user}
 
 ## Execution contexts describe the place of execution ## {#design-contexts}
 
-An <dfn>execution context</dfn> is a resource that represents the *place* where execution will happen. This could be a concrete resource - like a specific thread pool object, or a GPU - or a more abstract one, like the current thread of execution. Execution contexts
+An <dfn export=true>execution context</dfn> is a resource that represents the *place* where execution will happen. This could be a concrete resource - like a specific thread pool object, or a GPU - or a more abstract one, like the current thread of execution. Execution contexts
 don't need to have a representation in code; they are simply a term describing certain properties of execution of a function.
 
 ## Schedulers represent execution contexts ## {#design-schedulers}
 
-A <dfn>scheduler</dfn> is a lightweight handle that represents a strategy for scheduling work onto an *execution context*. Since execution contexts don't necessarily manifest in C++ code, it's not possible to program
+A <dfn export=true>scheduler</dfn> is a lightweight handle that represents a strategy for scheduling work onto an *execution context*. Since execution contexts don't necessarily manifest in C++ code, it's not possible to program
 directly against their API. A scheduler is a solution to that problem: the scheduler concept is defined by a single sender algorithm, `schedule`, which returns a sender that will complete on an execution context determined
 by the scheduler. Logic that you want to run on that context can be placed in the receiver's completion-signalling method.
 
@@ -1412,8 +1438,8 @@ to add other capabilities. For example:
 
 ## Senders describe work ## {#design-senders}
 
-A <dfn>sender</dfn> is an object that describes work. Senders are similar to futures in existing asynchrony designs, but unlike futures, the work that is being done to arrive at the values they will *send* is also directly described by the sender object itself. A
-sender is said to <dfn>send</dfn> some values if a receiver connected (see [[#design-connect]]) to that sender will eventually *receive* said values.
+A <dfn export=true>sender</dfn> is an object that describes work. Senders are similar to futures in existing asynchrony designs, but unlike futures, the work that is being done to arrive at the values they will *send* is also directly described by the sender object itself. A
+sender is said to <dfn export=true>send</dfn> some values if a receiver connected (see [[#design-connect]]) to that sender will eventually *receive* said values.
 
 The primary defining sender algorithm is [[#design-connect]]; this function, however, is not a user-facing API; it is used to facilitate communication between senders and various sender algorithms, but end user code is not expected to invoke
 it directly.
@@ -1441,7 +1467,7 @@ A successful asynchronous framework must provide an intuitive story for composit
 
 The true power and utility of senders is in their composability.
 With senders, users can describe generic execution pipelines and graphs, and then run them on and across a variety of different schedulers.
-Senders are composed using <dfn>sender algorithms</dfn>:
+Senders are composed using <dfn export=true>sender algorithms</dfn>:
 
 * [=sender factories=], algorithms that take no senders and return a sender.
 * [=sender adaptors=], algorithms that take (and potentially `execution::connect`) senders and return a sender.
@@ -1464,7 +1490,7 @@ of the work described by a sender, but we have found those sender algorithms to 
 None of these implementation strategies are acceptable for many classes of parallel runtimes, such as task frameworks (like <a href="https://github.com/STEllAR-GROUP/hpx">HPX</a>) or accelerator runtimes (like CUDA or SYCL).
 
 Therefore, in addition to the `on` sender algorithm from [[P1897R3]], we are proposing a way for senders to advertise what scheduler (and by extension what execution context) they will complete on.
-Any given sender <b>may</b> have <dfn>completion schedulers</dfn> for some or all of the signals (value, error, or stopped) it completes with (for more detail on the completion signals, see [[#design-receivers]]).
+Any given sender <b>may</b> have <dfn export=true>completion schedulers</dfn> for some or all of the signals (value, error, or stopped) it completes with (for more detail on the completion signals, see [[#design-receivers]]).
 When further work is attached to that sender by invoking sender algorithms, that work will also complete on an appropriate completion scheduler.
 
 ### `execution::get_completion_scheduler` ### {#design-sender-query-get_completion_scheduler}
@@ -1537,11 +1563,11 @@ this resource. In such a sender, calling `execution::connect` consumes the sende
 the call the input sender is no longer valid. Such a sender will also typically be move-only so that
 it can maintain unique ownership of that resource.
 
-A <dfn>single-shot sender</dfn> can only be connected to a receiver at most once. Its implementation of
+A <dfn export=true>single-shot sender</dfn> can only be connected to a receiver at most once. Its implementation of
 `execution::connect` only has overloads for an rvalue-qualified sender. Callers must pass the sender
 as an rvalue to the call to `execution::connect`, indicating that the call consumes the sender.
 
-A <dfn>multi-shot sender</dfn> can be connected to multiple receivers and can be launched multiple
+A <dfn export=true>multi-shot sender</dfn> can be connected to multiple receivers and can be launched multiple
 times. Multi-shot senders customise `execution::connect` to accept an lvalue reference to the
 sender. Callers can indicate that they want the sender to remain valid after the call to `execution::connect`
 by passing an lvalue reference to the sender to call these overloads. Multi-shot senders should also define
@@ -1942,7 +1968,7 @@ guarantees.
 
 ## Most sender adaptors are pipeable ## {#design-pipeable}
 
-To facilitate an intuitive syntax for composition, most sender adaptors are <dfn>pipeable</dfn>; they can be composed (<dfn>piped</dfn>) together with `operator|`.
+To facilitate an intuitive syntax for composition, most sender adaptors are <dfn export=true>pipeable</dfn>; they can be composed (<dfn export=true>piped</dfn>) together with `operator|`.
 This mechanism is similar to the `operator|` composition that C++ range adaptors support and draws inspiration from piping in *nix shells.
 Pipeable sender adaptors take a sender as their first parameter and have no other sender parameters.
 
@@ -2180,7 +2206,7 @@ obtain an object of implementation-defined type to be provided as the first argu
 
 ## User-facing sender factories ## {#design-sender-factories}
 
-A <dfn>sender factory</dfn> is an [=algorithm=] that takes no senders as parameters and returns a sender.
+A <dfn export=true>sender factory</dfn> is an [=algorithm=] that takes no senders as parameters and returns a sender.
 
 ### `execution::schedule` ### {#design-sender-factory-schedule}
 
@@ -2317,9 +2343,9 @@ This code uses the fact that `sync_wait` associates a scheduler with the receive
 
 ## User-facing sender adaptors ## {#design-sender-adaptors}
 
-A <dfn>sender adaptor</dfn> is an [=algorithm=] that takes one or more senders, which it may `execution::connect`, as parameters, and returns a sender, whose completion is related to the sender arguments it has received.
+A <dfn export=true>sender adaptor</dfn> is an [=algorithm=] that takes one or more senders, which it may `execution::connect`, as parameters, and returns a sender, whose completion is related to the sender arguments it has received.
 
-Sender adaptors are <i>lazy</i>, that is, they are never allowed to submit any work for execution prior to the returned sender being <dfn lt="start">started</dfn> later on, and are also guaranteed to not start any input senders passed into them. Sender consumers
+Sender adaptors are <i>lazy</i>, that is, they are never allowed to submit any work for execution prior to the returned sender being <dfn lt="start" export=true>started</dfn> later on, and are also guaranteed to not start any input senders passed into them. Sender consumers
 such as [[#design-sender-adaptor-ensure_started]], [[#design-sender-consumer-start_detached]], and [[#design-sender-consumer-sync_wait]] start senders.
 
 For more implementer-centric description of starting senders, see [[#design-laziness]].
@@ -2562,7 +2588,7 @@ the operation so that resource release can be sequenced after the completion.
 
 ## User-facing sender consumers ## {#design-sender-consumers}
 
-A <dfn>sender consumer</dfn> is an [=algorithm=] that takes one or more senders, which it may `execution::connect`, as parameters, and does not return a sender.
+A <dfn export=true>sender consumer</dfn> is an [=algorithm=] that takes one or more senders, which it may `execution::connect`, as parameters, and does not return a sender.
 
 ### `execution::start_detached` ### {#design-sender-consumer-start_detached}
 
@@ -2621,7 +2647,7 @@ execution::start_detached(work);
 
 ## Receivers serve as glue between senders ## {#design-receivers}
 
-A <dfn>receiver</dfn> is a callback that supports more than one channel. In fact, it supports three of them:
+A <dfn export=true>receiver</dfn> is a callback that supports more than one channel. In fact, it supports three of them:
 
 * `set_value`, which is the moral equivalent of an `operator()` or a function call, which signals successful completion of the operation its execution depends on;
 * `set_error`, which signals that an error has happened during scheduling of the current work, executing the current work, or at some earlier point in the sender chain; and
@@ -2629,7 +2655,7 @@ A <dfn>receiver</dfn> is a callback that supports more than one channel. In fact
     longer needed.
 
 Exactly one of these channels must be successfully (i.e. without an exception being thrown) invoked on a receiver before it is destroyed; if a call to `set_value` failed with an exception, either `set_error` or `set_stopped` must be invoked on the same receiver. These
-requirements are know as the <dfn>receiver contract</dfn>.
+requirements are know as the <dfn export=true>receiver contract</dfn>.
 
 While the receiver interface may look novel, it is in fact very similar to the interface of `std::promise`, which provides the first two signals as `set_value` and `set_error`, and it's possible to emulate the third channel with lifetime management of the promise.
 
@@ -2639,7 +2665,7 @@ Receivers are what is passed as the second argument to [[#design-connect]].
 
 ## Operation states represent work ## {#design-states}
 
-An <dfn>operation state</dfn> is an object that represents work. Unlike senders, it is not a chaining mechanism; instead, it is a concrete object that packages the work described by a full sender chain, ready to be executed. An operation state is neither movable nor
+An <dfn export=true>operation state</dfn> is an object that represents work. Unlike senders, it is not a chaining mechanism; instead, it is a concrete object that packages the work described by a full sender chain, ready to be executed. An operation state is neither movable nor
 copyable, and its interface consists of a single algorithm: `start`, which serves as the submission point of the work represented by a given operation state.
 
 Operation states are not a part of the user-facing API of this proposal; they are necessary for implementing sender consumers like `execution::ensure_started` and `this_thread::sync_wait`, and the knowledge of them is necessary to implement senders, so the only users who will
@@ -2740,7 +2766,7 @@ For sender algorithms which accept concepts other than `sender` as their first a
 Contrary to early revisions of this paper, we propose to make all sender adaptors perform strictly lazy submission, unless specified otherwise (the one notable exception in this paper is [[#design-sender-adaptor-ensure_started]], whose sole purpose is to start an
 input sender).
 
- <dfn>Strictly lazy submission</dfn> means that there is a guarantee that no work is submitted to an execution context before a receiver is connected to a sender, and `execution::start` is called on the resulting operation state.
+ <dfn export=true>Strictly lazy submission</dfn> means that there is a guarantee that no work is submitted to an execution context before a receiver is connected to a sender, and `execution::start` is called on the resulting operation state.
 
 ## Lazy senders provide optimization opportunities ## {#design-fusion}
 
@@ -3043,7 +3069,7 @@ namespace <i>tag-invoke</i> { <i>// exposition only</i>
       using type = tag_invoke_result_t&lt;Tag, Args...>;
     };
 
-  struct <i>tag</i>; <i>// exposition only</i>  
+  struct <i>tag</i>; <i>// exposition only</i>
 }
 inline constexpr <i>tag-invoke</i>::<i>tag</i> tag_invoke {};
 using <i>tag-invoke</i>::tag_invocable;
@@ -3300,7 +3326,7 @@ void swap(stop_token& rhs) noexcept;
 
 2. *Effects*: Exchanges the values of `source_` and `rhs.source_`.
 
-#### Members <b>[stoptoken.inplace.mem]</b>
+#### Members <b>[stoptoken.inplace.mem]</b> #### {#spec-stoptoken.inplace.mem}
 
 <pre highlight=c++>
 [[nodiscard]] bool stop_requested() const noexcept;
@@ -3615,10 +3641,10 @@ namespace std::this_thread {
 
 namespace std::execution {
   // [exec.recv], receivers
-  template &lt;class T, class E = exception_ptr>
+  template &lt;class T>
     concept receiver = <i>see-below</i>;
 
-  template &lt;class T, class... An>
+  template &lt;class T, class Completions>
     concept receiver_of = <i>see-below</i>;
 
   namespace <i>receivers</i> { // exposition only
@@ -3653,9 +3679,6 @@ namespace std::execution {
   using <i>op-state</i>::start_t;
   inline constexpr start_t start{};
 
-  template&lt;class S>
-    concept <i>has-sender-types</i> = <i>see-below</i>; // exposition only
-
   // [exec.snd], senders
   template&lt;class S, class E = no_env>
     concept sender = <i>see-below</i>;
@@ -3683,9 +3706,10 @@ namespace std::execution {
   inline constexpr get_completion_signatures_t get_completion_signatures {};
 
   template &lt;class S, class E = no_env>
+      requires sender&lt;S, E>
     using completion_signatures_of_t = <i>see below</i>;
 
-  template &lt;class E>
+  template &lt;class E> // arguments are not associated entities ([lib.tmpl-heads])
     struct dependent_completion_signatures;
 
   template &lt;class... Ts>
@@ -3699,15 +3723,17 @@ namespace std::execution {
            template &lt;class...> class Tuple = <i>decayed-tuple</i>,
            template &lt;class...> class Variant = <i>variant-or-empty</i>>
       requires sender&lt;S, E>
-    using value_types_of_t =
-      typename completion_signatures_of_t&lt;S, E>::template value_types&lt;Tuple, Variant>;
+    using value_types_of_t = <i>see below</i>;
 
   template&lt;class S,
            class E = no_env,
            template &lt;class...> class Variant = <i>variant-or-empty</i>>
       requires sender&lt;S, E>
-    using error_types_of_t =
-      typename completion_signatures_of_t&lt;S, E>::template error_types&lt;Variant>;
+    using error_types_of_t = <i>see below</i>;
+
+  template&lt;class S, class E = no_env>
+      requries sender&lt;S, E>
+    inline constexpr bool sends_stopped = <i>see below</i>;
 
   // [exec.connect], the connect sender algorithm
   namespace <i>senders-connect</i> { // exposition only
@@ -3860,23 +3886,28 @@ namespace std::execution {
       <i>see below</i>;
 
   // [exec.utils.cmplsigs]
-  template &lt;<i>completion-signature</i>... Fns> // arguments are not associated entities ([lib.tmpl-heads])
-    struct completion_signatures;
+  template &lt;<i>completion-signature</i>... Fns>
+    struct completion_signatures {};
 
   template &lt;class... Args> <i>// exposition only</i>
-    using <i>default-set-value</i> = set_value_t(Args...);
+    using <i>default-set-value</i> =
+      completion_signatures&lt;set_value_t(Args...)>;
 
   template &lt;class Err> <i>// exposition only</i>
-    using <i>default-set-error</i> = set_error_t(Err);
+    using <i>default-set-error</i> =
+      completion_signatures&lt;set_error_t(Err)>;
+
+  template &lt;class Sigs, class E> // exposition only
+    concept <i>valid-completion-signatures</i> = <i>see below</i>;
 
   // [exec.utils.mkcmplsigs]
   template <
     sender Sndr,
     class Env = no_env,
-    class AddlSigs = completion_signatures<>,
+    <i>valid-completion-signatures&lt;Env></i> AddlSigs = completion_signatures<>,
     template &lt;class...> class SetValue = <i>/* see below */</i>,
     template &lt;class> class SetError = <i>/* see below */</i>,
-    bool SendsStopped = completion_signatures_of_t&lt;Sndr, Env>::sends_stopped>
+    <i>valid-completion-signatures&lt;Env></i> SetStopped = completion_signatures&lt;set_stopped_t()>>
       requires sender<Sndr, Env>
   using make_completion_signatures = completion_signatures<<i>/* see below */</i>>;
 
@@ -3941,7 +3972,7 @@ namespace std::execution {
 2. The name `execution::get_scheduler` denotes a customization point object. For some subexpression `r`, if the type of `r` is (possibly cv-qualified) `no_env`, then `execution::get_scheduler(r)` is ill-formed. Otherwise, it is expression equivalent to:
 
     1. `tag_invoke(execution::get_scheduler, as_const(r))`, if this expression is well formed.
-    
+
         * <i>Mandates:</i> The `tag_invoke` expression above is not
             potentially-throwing and its type satisfies `execution::scheduler`.
 
@@ -4025,7 +4056,9 @@ namespace std::execution {
 
     1. `tag_invoke(execution::get_env, r)` if that expression is well-formed.
 
-    2. Otherwise, <code><i>empty-env</i>{}</code>.
+        * <i>Mandates:</i> The decayed type of the above expression is not `no_env`.
+
+    2. Otherwise, `get_env(r)` is ill-formed.
 
 2. If `get_env(r)` is an lvalue, the object it refers to shall be valid while `r` is valid.
 
@@ -4132,27 +4165,41 @@ enum class forward_progress_guarantee {
 
 ## Receivers <b>[exec.recv]</b> ## {#spec-execution.receivers}
 
-1. A <i>receiver</i> represents the continuation of an asynchronous operation. An asynchronous operation may complete with a (possibly empty) set of values, an error, or it may be cancelled. A receiver has three principal operations corresponding to the three ways
-    an asynchronous operation may complete: `set_value`, `set_error`, and `set_stopped`. These are collectively known as a receiver’s <i>completion-signal operations</i>.
+1. A <i>receiver</i> represents the continuation of an asynchronous operation.
+    An asynchronous operation may complete with a (possibly empty) set of
+    values, an error, or it may be cancelled. A receiver has three principal
+    operations corresponding to the three ways an asynchronous operation may
+    complete: `set_value`, `set_error`, and `set_stopped`. These are
+    collectively known as a receiver’s <i>completion-signal operations</i>.
 
-2. The `receiver` concept defines the requirements for a receiver type with an unknown set of value types. The `receiver_of` concept defines the requirements for a receiver type with a known set of value types, whose error type is `exception_ptr`.
+2. The `receiver` concept defines the requirements for a receiver type with an
+    unknown set of completion signatures. The `receiver_of` concept defines the
+    requirements for a receiver type with a known set of completion signatures.
 
     <pre highlight=c++>
-    template&lt;class T, class E = exception_ptr>
-    concept receiver =
-      move_constructible&lt;remove_cvref_t&lt;T>> &&
-      constructible_from&lt;remove_cvref_t&lt;T>, T> &&
-      requires(remove_cvref_t&lt;T>&& t, E&& e) {
-        { execution::set_stopped(std::move(t)) } noexcept;
-        { execution::set_error(std::move(t), (E&&) e) } noexcept;
-      };
+    template&lt;class T>
+      concept receiver =
+        move_constructible&lt;remove_cvref_t&lt;T>> &&
+        constructible_from&lt;remove_cvref_t&lt;T>, T> &&
+        requires(const remove_cvref_t&lt;T>& t) {
+          execution::get_env(t);
+        };
 
-    template&lt;class T, class... An>
-    concept receiver_of =
-      receiver&lt;T> &&
-      requires(remove_cvref_t&lt;T>&& t, An&&... an) {
-        execution::set_value(std::move(t), (An&&) an...);
-      };
+    template &lt;class Signature, class T>
+      concept <i>valid-completion-for</i> = <i>// exposition only</i>
+        requires (Signature* sig) {
+            []&lt;class Ret, class... Args>(Ret(*)(Args...))
+                requires nothrow_tag_invocable&lt;Ret, remove_cvref_t&lt;T>, Args...>
+            {}(sig);
+        };
+
+    template &lt;class T, class Completions>
+      concept receiver_of =
+        receiver&lt;T> &amp;&amp;
+        requires (Completions* completions) {
+            []&lt;<i>valid-completion-for</i>&lt;T>...Sigs>(completion_signatures&lt;Sigs...>*)
+            {}(completions);
+        };
     </pre>
 
 3. The receiver’s completion-signal operations have semantic requirements that are collectively known as the <i>receiver contract</i>, described below:
@@ -4202,10 +4249,17 @@ enum class forward_progress_guarantee {
 
 1. `execution::set_value` is used to send a <i>value completion signal</i> to a receiver.
 
-2. The name `execution::set_value` denotes a customization point object. The expression `execution::set_value(R, Vs...)` for some subexpressions `R` and `Vs...` is expression-equivalent to:
+2. The name `execution::set_value` denotes a customization point object. The
+    expression `execution::set_value(R, Vs...)` for some subexpressions `R` and
+    `Vs...` is expression-equivalent to:
 
-    1. `tag_invoke(execution::set_value, R, Vs...)`, if that expression is valid. If the function selected by `tag_invoke` does not send the value(s) `Vs...` to the receiver `R`’s value channel, the behavior of calling
-`execution::set_value(R, Vs...)` is undefined.
+    1. `tag_invoke(execution::set_value, R, Vs...)`, if that expression is
+        valid. If the function selected by `tag_invoke` does not send the
+        value(s) `Vs...` to the receiver `R`’s value channel, the behavior of
+        calling `execution::set_value(R, Vs...)` is undefined.
+
+        * <i>Mandates:</i> The `tag_invoke` expression above is not potentially
+            throwing.
 
     2. Otherwise, `execution::set_value(R, Vs...)` is ill-formed.
 
@@ -4215,8 +4269,10 @@ enum class forward_progress_guarantee {
 
 2. The name `execution::set_error` denotes a customization point object. The expression `execution::set_error(R, E)` for some subexpressions `R` and `E` is expression-equivalent to:
 
-    1. `tag_invoke(execution::set_error, R, E)`, if that expression is valid. If the function selected by `tag_invoke` does not send the error `E` to the receiver `R`’s error channel, the behavior of calling `execution::set_error(R, E)`
-is undefined.
+    1. `tag_invoke(execution::set_error, R, E)`, if that expression is valid. If
+        the function selected by `tag_invoke` does not send the error `E` to the
+        receiver `R`’s error channel, the behavior of calling
+        `execution::set_error(R, E)` is undefined.
 
         * <i>Mandates:</i> The `tag_invoke` expression above is not potentially
             throwing.
@@ -4296,24 +4352,26 @@ is undefined.
 2. The `sender` concept defines the requirements for a sender type. The `sender_to` concept defines the requirements for a sender type capable of being connected with a specific receiver type.
 
     <pre highlight=c++>
-    template&lt;template&lt;template&lt;class...> class, template&lt;class...> class> class>
-      struct <i>has-value-types</i>; // exposition only
+    template &lt;class T, template &lt;class...> class C>
+      inline constexpr bool <i>is-instance-of</i> = false; // exposition only
 
-    template&lt;template&lt;template&lt;class...> class> class>
-      struct <i>has-error-types</i>; // exposition only
+    template &lt;class... Ts, template &lt;class...> class C>
+      inline constexpr bool <i>is-instance-of</i>&lt;C&lt;Ts...>, C> = true;
 
-    template&lt;class S>
-      concept <i>has-sender-types</i> = // exposition only
-        requires {
-          typename <i>has-value-types</i>&lt;S::template value_types>;
-          typename <i>has-error-types</i>&lt;S::template error_types>;
-          typename bool_constant&lt;S::sends_stopped>;
-        };
+    template &lt;class Sigs, class E>
+      concept <i>valid-completion-signatures</i> = // exposition only
+        <i>is-instance-of</i>&lt;Sigs, completion_signatures> ||
+        (
+          same_as&lt;Sigs, dependent_completion_signatures&lt;no_env>> &&
+          same_as&lt;E, no_env>
+        );
 
     template &lt;class S, class E>
       concept <i>sender-base</i> = // exposition only
-        requires { typename completion_signatures_of_t&lt;S, E>; } &amp;&amp;
-        <i>has-sender-types</i>&lt;completion_signatures_of_t&lt;S, E>>;
+        requires (S&& s, E&& e) {
+          { get_completion_signatures(std::forward&lt;S>(s), std::forward&lt;E>(e)) } ->
+            <i>valid-completion-signatures</i>&lt;E>;
+        };
 
     template&lt;class S, class E = no_env>
       concept sender =
@@ -4324,7 +4382,7 @@ is undefined.
     template&lt;class S, class R>
       concept sender_to =
         sender&lt;S, env_of_t&lt;R>> &amp;&amp;
-        receiver&lt;R> &amp;&amp;
+        receiver_of&lt;R, completion_signatures_of_t&lt;S, env_of_t&lt;R>>> &amp;&amp;
         requires (S&amp;&amp; s, R&amp;&amp; r) {
           execution::connect(std::forward&lt;S>(s), std::forward&lt;R>(r));
         };
@@ -4338,7 +4396,7 @@ is undefined.
         sender&ltS, E> &&
         same_as&lt
           <i>type-list</i>&ltTs...>,
-          typename completion_signatures_of_t&ltS, E>::template value_types&lt<i>type-list</i>, type_identity_t>
+          value_types_of_t&ltS, E, <i>type-list</i>, type_identity_t>
         >;
     </pre>
 
@@ -4376,12 +4434,23 @@ is undefined.
 
     1. `tag_invoke_result_t<get_completion_signatures_t, S, E>{}` if that expression is well-formed,
 
-    2. Otherwise, if `remove_cvref_t<S>::completion_signatures` is well-formed and names a type, then a prvalue of `remove_cvref_t<S>::completion_signatures`,
+        * <i>Mandates:</i> <code><i>is-instance-of</i>&lt;Sigs,
+            completion_signatures></code> or <code><i>is-instance-of</i>&lt;Sigs,
+            dependent_completion_signatures></code>, where `Sigs` names the type
+            `tag_invoke_result_t<get_completion_signatures_t, S, E>`.
+
+    2. Otherwise, if `remove_cvref_t<S>::completion_signatures` is well-formed
+        and names a type, then a value-initialized prvalue of type
+        `remove_cvref_t<S>::completion_signatures`,
+
+        * <i>Mandates:</i> <code><i>is-instance-of</i>&lt;Sigs,
+            completion_signatures></code> or <code><i>is-instance-of</i>&lt;Sigs,
+            dependent_completion_signatures></code>, where `Sigs` names the type `remove_cvref_t<S>::completion_signatures`.
 
     3. Otherwise, if <code><i>is-awaitable</i>&lt;S></code> is `true`, then
 
         1. If <code><i>await-result-type</i>&lt;S></code> is <code><i>cv</i> void</code> then a prvalue of a type equivalent to:
-        
+
             <pre highlight="c++">
             completion_signatures<
               set_value_t(),
@@ -4447,7 +4516,7 @@ is undefined.
     environment other than `execution::no_env` such that `sender<S, E>` is
     `true`. Let `Tuple`, `Variant1`, and `Variant2` be variadic alias templates
     or class templates such that following types are well-formed:
-   
+
       * `value_types_of_t<S, no_env, Tuple, Variant1>`
       * `error_types_of_t<S, no_env, Variant2>`
 
@@ -4460,38 +4529,23 @@ is undefined.
       * `completion_signatures_of_t<S, E>::sends_stopped` shall have the same
           value as `completion_signatures_of_t<S, no_env>::sends_stopped`.
 10. [<i>Note</i>: The types <code>Args<i><sub>i</sub></i>...</code> and <code>E<i><sub>i</sub></i>...</code> captured in `value_types` and `error_types` can appear in any order. 
-For example, a sender that can yield, in case of an error, either `exception_ptr` or `error_code` can have `error_types` be either `Variant<exception_ptr, error_code>` or `Variant<error_code, exception_ptr>`. --<i>end note</i>]
+     For example, a sender that can yield, in case of an error, either `exception_ptr` or `error_code` can have `error_types` be either `Variant<exception_ptr, error_code>` or `Variant<error_code, exception_ptr>`. --<i>end note</i>]
 
 #### `dependent_completion_signatures` <b>[exec.depsndtraits]</b> #### {#spec-exec.depsndtraitst}
 
 <pre highlight="c++">
-template &lt;class E>
-  struct dependent_completion_signatures;
+template &lt;class E>  // arguments are not associated entities ([lib.tmpl-heads])
+  struct dependent_completion_signatures {};
 </pre>
 
 1. `dependent_completion_signatures` is a placeholder completion signatures
-    descriptor that can be used to report that a type might be a sender within a
-    particular execution environment, but it isn't a sender in an arbitrary
-    execution environment.
+    descriptor that can be returned from `get_completion_signatures` to report
+    that a type might be a sender within a particular execution environment, but
+    it isn't a sender in an arbitrary execution environment.
 
-2. If `decay_t<E>` is `no_env`, `dependent_completion_signatures<E>` is equivalent to:
-
-    <pre highlight="c++">
-    template &lt;>
-      struct dependent_completion_signatures&lt;no_env> {
-        template &lt;template &lt;class...> class, template &lt;class...> class>
-            requires false
-          using value_types = <i>/* unspecified */</i>;
-
-        template &lt;template &lt;class...> class>
-            requires false
-          using error_types = <i>/* unspecified */</i>;
-
-        static constexpr bool sends_stopped = <i>/* unspecified */</i>;
-      };
-    </pre>
-
-    Otherwise, `dependent_completion_signatures<E>` is an empty struct.
+2. When used as the return type of a customization of
+    `get_completion_signatures`, the template argument `E` shall be the
+    unqualified type of the second argument.
 
 ### `execution::connect` <b>[exec.connect]</b> ### {#spec-execution.senders.connect}
 
@@ -4499,7 +4553,15 @@ template &lt;class E>
 
 2. The name `execution::connect` denotes a customization point object. For some subexpressions `s` and `r`, let `S` be `decltype((s))` and `R` be `decltype((r))`, and let `S'` and `R'` be the decayed types of `S` and `R`, respectively. If `R` does not satisfy `execution::receiver`, `execution::connect(s, r)` is ill-formed. Otherwise, the expression `execution::connect(s, r)` is expression-equivalent to:
 
-    1. `tag_invoke(execution::connect, s, r)`, if that expression is valid and `S` satisfies `execution::sender`. If the function selected by `tag_invoke` does not return an operation state for which `execution::start` starts work described by `s`, the behavior of calling `execution::connect(s, r)` is undefined.
+    1. `tag_invoke(execution::connect, s, r)`, if the constraints below are satisfied. If the function selected by `tag_invoke` does not return an operation state for which `execution::start` starts work described by `s`, the behavior of calling `execution::connect(s, r)` is undefined.
+
+        * <i>Constraints:</i>
+
+            <pre highlight="c++">
+            sender&lt;S, env_of_t&lt;R>> &amp;&amp;
+            receiver_of&lt;R, completion_signatures_of_t&lt;S, env_of_t&lt;R>>> &amp;&amp;
+            tag_invocable&lt;connect_t, S, R>
+            </pre>
 
         * <i>Mandates:</i> The type of the `tag_invoke` expression above satisfies `operation_state`.
 
@@ -4537,7 +4599,14 @@ template &lt;class E>
 
           6. For some expression `e`, the expression `p.await_transform(e)` is expression-equivalent to `tag_invoke(as_awaitable, e, p)` if that expression is well-formed; otherwise, it is expression-equivalent to `e`.
 
-        The operand of the <i>requires-clause</i> of <code><i>connect-awaitable</i></code> is equivalent to `receiver_of<R>` if <code><i>await-result-type</i>&lt;S, <i>connect-awaitable-promise</i>></code> is <code><i>cv</i> void</code>; otherwise, it is <code>receiver_of&lt;R, <i>await-result-type</i>&lt;S, <i>connect-awaitable-promise</i>>></code>.
+        Let `Res` be <code><i>await-result-type</i>&lt;S, <i>connect-awaitable-promise</i>></code>, and let `Vs...` be an empty parameter pack if `Res` is <code><i>cv</i> void</code>, or a pack containing the single type `Res` otherwise. The operand of the <i>requires-clause</i> of <code><i>connect-awaitable</i></code> is equivalent to `receiver_of<R, Sigs>` where `Sigs` names the type:
+
+            <pre highlight="c++">
+            completion_signatures&lt;
+              set_value_t(Vs...),
+              set_error_t(exception_ptr),
+              set_stopped_t()>
+            </pre>
 
     3. Otherwise, `execution::connect(s, r)` is ill-formed.
 
@@ -4589,56 +4658,57 @@ template &lt;class E>
 
 2. The name `execution::schedule` denotes a customization point object. For some subexpression `s`, the expression `execution::schedule(s)` is expression-equivalent to:
 
-    1. `tag_invoke(execution::schedule, s)`, if that expression is valid. If the function selected by `tag_invoke` does not return a sender whose `set_value` completion scheduler is equivalent to `s`, the behavior of calling
-`execution::schedule(s)` is undefined.
+    1. `tag_invoke(execution::schedule, s)`, if that expression is valid. If the function selected by `tag_invoke` does not return a sender whose `set_value` completion scheduler is equivalent to `s`, the behavior of calling `execution::schedule(s)` is undefined.
 
         * <i>Mandates:</i> The type of the `tag_invoke` expression above satisfies `execution::sender`.
 
     2. Otherwise, `execution::schedule(s)` is ill-formed.
 
-#### `execution::just` <b>[exec.just]</b> #### {#spec-execution.senders.just}
+#### `execution::just`, `execution::just_error`, `execution::just_stopped` <b>[exec.just]</b> #### {#spec-execution.senders.just}
 
 1. `execution::just` is used to create a sender that propagates a set of values to a connected receiver.
+    `execution::just_error` is used to create a sender that propagates an error to a connected receiver.
+    `execution::just_stopped` is used to create a sender that propagates a stopped signal to a connected receiver.
 
     <pre highlight=c++>
-    template&lt;class... Ts>
-    struct <i>just-sender</i> // exposition only
-      : completion_signatures&lt;set_value_t(Ts...), set_error_t(exception_ptr)>
-    {
-      tuple&lt;Ts...> vs_;
+    template&lt;class CPO, class... Ts>
+    struct <i>just-sender</i> { // exposition only
+      using completion_signatures =
+        execution::completion_signatures&lt;CPO(Ts...)>;
+
+      [[no_unique_address]] tuple&lt;Ts...> vs_; // exposition only
 
       template&lt;class R>
-      struct operation_state {
-        tuple&lt;Ts...> vs_;
-        R r_;
+      struct operation_state { // exposition only
+        [[no_unique_address]] tuple&lt;Ts...> vs_; // exposition only
+        R r_; // exposition only
 
-        friend void tag_invoke(start_t, operation_state& s) noexcept {
-          try {
-            apply([&s](Ts &... values_) {
-              set_value(std::move(s.r_), std::move(values_)...);
-            }, s.vs_);
-          }
-          catch (...) {
-            set_error(std::move(s.r_), current_exception());
-          }
+        friend void tag_invoke(start_t, operation_state&amp; s) noexcept {
+          apply([&amp;s](Ts&amp;... values_) {
+            CPO{}(std::move(s.r_), std::move(values_)...);
+          }, s.vs_);
         }
       };
 
-      template&lt;receiver R>
-        requires receiver_of&lt;R, Ts...> && (copy_constructible&ltTs> &&...)
-      friend operation_state&lt;decay_t&lt;R>> tag_invoke(connect_t, const <i>just-sender</i>& j, R && r) {
-        return { j.vs_, std::forward&lt;R>(r) };
+      template&lt;receiver_of&lt;completion_signatures> R>
+        requires (copy_constructible&ltTs> &amp;&amp;...)
+      friend operation_state&lt;decay_t<R>> tag_invoke(connect_t, const <i>just-sender</i>&amp; s, R &amp;&amp; r) {
+        return { s.vs_, std::forward&lt;R>(r) };
       }
 
-      template&lt;receiver R>
-        requires receiver_of&lt;R, Ts...>
-      friend operation_state&lt;decay_t&lt;R>> tag_invoke(connect_t, <i>just-sender</i>&& j, R && r) {
-        return { std::move(j.vs_), std::forward&lt;R>(r) };
+      template&lt;receiver_of&lt;completion_signatures> R>
+      friend operation_state&lt;decay_t<R>> tag_invoke(connect_t, <i>just-sender</i>&amp;&amp; s, R &amp;&amp; r) {
+        return { std::move(s.vs_), std::forward&lt;R>(r) };
       }
     };
 
     template&lt;<i>movable-value</i>... Ts>
-      <i>just-sender</i>&lt;decay_t&lt;Ts>...> just(Ts &&... ts) noexcept(<i>see-below</i>);
+      <i>just-sender</i>&lt;set_value_t, decay_t&lt;Ts>...> just(Ts &&... ts) noexcept(<i>see-below</i>);
+
+    template&lt;<i>movable-value</i> T>
+      <i>just-sender</i>&lt;set_error_t, decay_t&lt;T>> just_error(T && t) noexcept(<i>see-below</i>);
+
+    <i>just-sender</i>&lt;set_stopped_t> just_stopped() noexcept;
     </pre>
 
 1. <i>Effects</i>: Initializes `vs_` with <code><i>decayed-tuple</i>&lt;Ts...>(std::forward&lt;Ts>(ts)...)</code>.
@@ -4646,7 +4716,7 @@ template &lt;class E>
 2. <i>Remarks</i>: The expression in the `noexcept-specifier` is equivalent to
 
     <pre highlight=c++>
-    (is_nothrow_constructible_v&lt;decay_t&lt;Ts>, Ts> && ...)
+    (is_nothrow_constructible_v&lt;decay_t&lt;Ts>, Ts> &amp;&amp; ...)
     </pre>
 
 #### `execution::transfer_just` <b>[exec.transfer_just]</b> #### {#spec-execution.senders.transfer_just}
@@ -4656,87 +4726,15 @@ template &lt;class E>
 2. The name `execution::transfer_just` denotes a customization point object. For some subexpressions `s` and `vs...`, let `S` be `decltype((s))` and `Vs...` be `decltype((vs))`. If `S` does not satisfy `execution::scheduler`, or any type `V` in `Vs` does not
     satisfy <code><i>movable-value</i></code>, `execution::transfer_just(s, vs...)` is ill-formed. Otherwise, `execution::transfer_just(s, vs...)` is expression-equivalent to:
 
-    1. `tag_invoke(execution::transfer_just, s, vs...)`, if that expression is valid. If the function selected by `tag_invoke` does not return a sender whose `set_value` completion scheduler is equivalent to `s` and sends
+    1. `tag_invoke(execution::transfer_just, s, vs...)`, if that expression is
+        valid. If the function selected by `tag_invoke` does not return a sender
+        whose `set_value` completion scheduler is equivalent to `s` and sends
         values equivalent to `auto(vs)...` to a receiver connected to it, the
-behavior of calling `execution::transfer_just(s, vs...)` is undefined.
+        behavior of calling `execution::transfer_just(s, vs...)` is undefined.
 
         * <i>Mandates:</i>  `execution::sender_of<R, no_env, decltype(auto(vs))...>`, where `R` is the type of the `tag_invoke` expression above.
 
     2. Otherwise, `execution::transfer(execution::just(vs...), s)`.
-
-#### `execution::just_error` <b>[exec.just_error]</b> #### {#spec-execution.senders.just_error}
-
-1. `execution::just_error` is used to create a sender that propagates an error to a connected receiver.
-
-    <pre highlight=c++>
-    template&lt;class T>
-    struct <i>just-error-sender</i> // exposition only
-      : completion_signatures&lt;set_error_t(T)>
-    {
-      T err_;
-
-      template&lt;class R>
-      struct operation_state {
-        T err_;
-        R r_;
-
-        friend void tag_invoke(start_t, operation_state& s) noexcept {
-          set_error(std::move(s.r_), std::move(err_));
-        }
-      };
-
-      template&lt;receiver R>
-        requires receiver&lt;R, T> && copy_constructible&lt;T>
-      friend operation_state&lt;decay_t&lt;R>> tag_invoke(connect_t, const <i>just-error-sender</i>& j, R && r) {
-        return { j.err_, std::forward&lt;R>(r) };
-      }
-
-      template&lt;receiver R>
-        requires receiver&lt;R, T>
-      friend operation_state&lt;decay_t&lt;R>> tag_invoke(connect_t, <i>just-error-sender</i>&& j, R && r) {
-        return { std::move(j.err_), std::forward&lt;R>(r) };
-      }
-    };
-
-    template&lt;<i>movable-value</i> T>
-      <i>just-error-sender</i>&lt;decay_t&lt;T>> just_error(T && t) noexcept(<i>see-below</i>);
-    </pre>
-
-1. <i>Effects</i>: Returns a <code><i>just-error-sender</i>&lt;decay_t&lt;T>></code> with `err_` direct initialized with `static_cast<T&&>(t)`.
-
-2. <i>Remarks</i>: The expression in the `noexcept-specifier` is equivalent to
-
-    <pre highlight=c++>
-    is_nothrow_constructible_v&lt;decay_t&lt;T>, T>
-    </pre>
-
-#### `execution::just_stopped` <b>[exec.just_stopped]</b> #### {#spec-execution.senders.just_stopped}
-
-1. `execution::just_stopped` is used to create a sender that propagates a stopped signal to a connected receiver.
-
-    <pre highlight=c++>
-    struct <i>just-stopped-sender</i> // exposition only
-      : completion_signatures&lt;set_stopped_t()>
-    {
-      template&lt;class R>
-      struct operation_state {
-        R r_;
-
-        friend void tag_invoke(start_t, operation_state& s) noexcept {
-          set_stopped(std::move(s.r_));
-        }
-      };
-
-      template&lt;receiver R>
-      friend operation_state&lt;decay_t&lt;R>> tag_invoke(connect_t, const <i>just-stopped-sender</i>& j, R && r) {
-        return { std::forward&lt;R>(r) };
-      }
-    };
-
-    <i>just-stopped-sender</i> just_stopped() noexcept;
-    </pre>
-
-1. <i>Effects</i>: Equivalent to <code><i>just-stopped-sender</i>{}</code>.
 
 #### `execution::read` <b>[exec.read]</b> #### {#spec-execution.senders.read}
 
@@ -4771,20 +4769,25 @@ behavior of calling `execution::transfer_just(s, vs...)` is undefined.
             }
           };
 
-        template&lt;receiver R>
-          requires <i>callable</i>&lt;Tag, env_of_t&lt;R>> &amp;&amp;
-            receiver_of&lt;R, <i>call-result-t</i>&lt;Tag, env_of_t&lt;R>>>
+        template &lt;class Env>
+            requires <i>callable</i>&lt;Tag, Env>
+          using <i>completions</i> = // exposition only
+            completion_signatures&lt;
+              set_value_t(<i>call-result-t</i>&lt;Tag, Env>), set_error_t(exception_ptr)>;
+
+        template&lt;class R>
+          requires receiver_of&lt;R, <i>completions</i>&lt;env_of_t&lt;R>>>
         friend <i>operation-state</i>&lt;decay_t&lt;R>> tag_invoke(connect_t, <i>read-sender</i>, R && r) {
           return { std::forward&lt;R>(r) };
         }
 
-        friend <i>empty-env</i> tag_invoke(get_completion_signatures_t, <i>read-sender</i>, auto);
+        template&lt;class Env>
+          friend auto tag_invoke(get_completion_signatures_t, <i>read-sender</i>, Env)
+            -> dependent_completion_signatures&lt;Env>;
 
         template&lt;class Env>
-          requires (!same_as&lt;Env, no_env>) &amp;&amp; <i>callable</i>&lt;Tag, Env>
-        friend auto tag_invoke(get_completion_signatures_t, <i>read-sender</i>, Env)
-          -> completion_signatures&lt;
-              set_value_t(<i>call-result-t</i>&lt;Tag, Env>), set_error_t(exception_ptr)>;
+          friend auto tag_invoke(get_completion_signatures_t, <i>read-sender</i>, Env)
+            -> <i>completions</i>&lt;Env> requires true;
       };
     </pre>
 
@@ -4824,7 +4827,7 @@ behavior of calling `execution::transfer_just(s, vs...)` is undefined.
       };
     }
     inline constexpr <i>sender-adaptors</i>::on_t on{};
-    </pre>  
+    </pre>
 
     -- <i>end example</i>]
 
@@ -4932,8 +4935,10 @@ are all well-formed.
 
     3. Otherwise, `schedule_from(sch, s)`.
 
-    If the function selected above does not return a sender which is a result of a call to `execution::schedule_from(sch, s2)`, where `s2` is a sender which sends equivalent to those sent by `s`, the behavior of calling
-`execution::transfer(s, sch)` is undefined.
+    If the function selected above does not return a sender which is a result of
+    a call to `execution::schedule_from(sch, s2)`, where `s2` is a sender which
+    sends equivalent to those sent by `s`, the behavior of calling
+    `execution::transfer(s, sch)` is undefined.
 
 3. Senders returned from `execution::transfer` shall not propagate the sender queries `get_completion_scheduler<CPO>` to an input sender. They will implement `get_completion_scheduler<CPO>`, where `CPO` is one of `set_value_t` and `set_stopped_t`; this query returns a scheduler equivalent to the `sch` argument from those queries. The `get_completion_scheduler<set_error_t>` is not implemented, as the scheduler cannot be guaranteed in case an error is thrown while trying to schedule work on the given scheduler object.
 
@@ -4967,30 +4972,21 @@ are all well-formed.
 
         3. Returns an operation state `op_state` that contains `op_state2`. When `execution::start(op_state)` is called, calls `execution::start(op_state2)`. The lifetime of `op_state3` ends when `op_state` is destroyed.
 
-    3. Given an expression `e`, let `E` be `decltype((e))`. If `sender<S,
-        E>` is `false`, the type of `tag_invoke(get_completion_signatures, s2, e)` shall
-        be equivalent to `dependent_completion_signatures<E>`. Otherwise, let `Es...` be the set of types in the <code><i>type-list</i></code> named by <code>error_types_of_t&lt;S, E, <i>type-list</i>></code>, and let
-        `Vs...` be the set of unique types in the <code><i>type-list</i></code>
-        named by <code>value_types_of_t&lt;S, E, <i>set-value-signature</i>,
-        <i>type-list</i>></code>, where <code><i>set-value-signature</i></code>
-        is the alias template:
+    3. Given subexpressions `s2` and `e`, where `s2` is a sender returned from `schedule_from` or a copy of such, let `S2` be `decltype((s2))` and let `E` be `decltype((e))`. Then the type of `tag_invoke(get_completion_signatures, s2, e)` shall be:
 
-            <pre highlight="c++">
-            template &lt;class... Ts>
-              using <i>set-value-signature</i> = set_value_t(Ts...);
-            </pre>
+        <pre highlight="c++">
+        make_completion_signatures&lt;
+          copy_cvref_t&lt;S2, S>,
+          E,
+          make_completion_signatures&lt;
+            schedule_result_t&lt;Sch>,
+            E,
+            completion_signatures&lt;set_error_t(exception_ptr)>,
+            <i>no-value-completions</i>>>;
+        </pre>
 
-            Let `Bs...` be the set of unique types in `[Es..., exception_ptr]`. If either `completion_signatures_of_t<schedule_result_t<Sch>, E>::sends_stopped` or `completion_signatures_of_t<S, E>::sends_stopped` is `true`, then the type of `tag_invoke(get_completion_signatures, s2, e)` is a class type equivalent to:
-
-            <pre highlight="c++">
-            completion_signatures&lt;Vs..., set_error_t(Bs)..., set_stopped_t()>
-            </pre>
-
-            Otherwise:
-
-            <pre highlight="c++">
-            completion_signatures&lt;Vs..., set_error_t(Bs)...>
-            </pre>
+        where <code><i>no-value-completions</i>&lt;As...></code> names the type `completion_signatures<>`
+        for any set of types `As...`.
 
 4. Senders returned from `execution::schedule_from` shall not propagate the sender queries `get_completion_scheduler<CPO>` to an input sender. They will implement `get_completion_scheduler<CPO>`, where `CPO` is one of `set_value_t` and `set_stopped_t`; this query returns a scheduler equivalent to the `sch` argument from those queries. The `get_completion_scheduler<set_error_t>` is not implemented, as the scheduler cannot be guaranteed in case an error is thrown while trying to schedule work on the given scheduler object.
 
@@ -5023,7 +5019,9 @@ are all well-formed.
                 calls `execution::set_value(out_r)`; otherwise, it calls
                 `execution::set_value(out_r, v)`. If any of these throw an
                 exception, it catches it and calls `execution::set_error(out_r,
-                current_exception())`. If any of these expressions would be ill-formed, the expression `execution::set_value(r, args...)` is ill-formed.
+                current_exception())`. If any of these expressions would be
+                ill-formed, the expression `execution::set_value(r, args...)` is
+                ill-formed.
 
             2. `execution::set_error(r, e)` is expression-equivalent to `execution::set_error(out_r, e)`.
 
@@ -5031,42 +5029,41 @@ are all well-formed.
 
         2. Returns an expression equivalent to `execution::connect(s, r)`.
 
-        3. Given an expression `e`, let `E` be `decltype((e))`. If
-            `sender<S, E>` is `false`, the type of
-            `tag_invoke(get_completion_signatures, s2, e)` shall be equivalent to
-            `dependent_completion_signatures<E>`. Otherwise, let `V` be
-            <code>value_types_of_t&lt;S, E, <i>result-type</i>,
-            <i>type-list</i>></code>, where <code><i>result-type</i></code> is
-            the alias template:
+        3. Let <code><i>compl-sig-t</i>&lt;Tag, Args...></code> name the type
+            `Tag()` if `Args...` is a template paramter pack containing the
+            single type `void`; otherwise, `Tag(Args...)`. Given
+            subexpressions `s2` and `e` where `s2` is a sender returned from
+            `then` or a copy of such, let `S2` be `decltype((s2))` and let
+            `E` be `decltype((e))`. The type of
+            `tag_invoke(get_completion_signatures, s2, e)` shall be equivalent
+            to:
 
             <pre highlight="c++">
-            template &lt;class... Ts>
-              using <i>result-type</i> = invoke_result_t&lt;F, Ts...>;
+            make_completion_signatures&lt;
+              copy_cvref_t&lt;S2, S>, E, <i>set-error-signature</i>,
+                <i>set-value-completions</i>>;
             </pre>
 
-            1. If `V` is ill-formed, type of `tag_invoke(get_completion_signatures, s2, e)` shall be equivalent to `dependent_completion_signatures<E>`.
+            where <code><i>set-value-completions</i></code> is an alias for:
 
-            2. Otherwise, let  `As...` be the unique set of types in the
-                <code><i>type-list</i></code> named by `V`, and let `Bs...` be
-                the unique set of types in the <code><i>type-list</i></code>
-                named by <code>error_types_of_t&lt;S, E, <i>type-list</i>></code>
-                with the addition of `exception_ptr`. If `completion_signatures_of_t<S,
-                E>::sends_stopped` is `true`, the type of
-                `tag_invoke(get_completion_signatures, s2, e)` shall be equivalent to:
+            <pre highlight="c++">
+            template &lt;class... As>
+              <i>set-value-completions</i> =
+                completion_signatures&lt;<i>compl-sig-t</i>&lt;set_value_t, invoke_result_t&lt;F, As...>>>
+            </pre>
 
-                <pre highlight="c++">
-                completion_signatures&lt;
-                  <i>unary-set-value-signature</i>&lt;As>..., set_error_t(Bs)..., set_stopped_t()>
-                </pre>
+            and <code><i>set-error-signature</i></code> is an alias for
+            `completion_signatures<set_error_t(exception_ptr)>` if any of the types
+            in the <code><i>type-list</i></code> named by
+            <code>value_types_of_t&lt;copy_cvref_t&lt;S2, S>, E, <i>potentially-throwing</i>, <i>type-list</i>></code>
+            are `true_type`; otherwise, `completion_signatures<>`, where
+            <code><i>potentially-throwing</i></code> is the template alias:
 
-                Otherwise:
-
-                <pre highlight="c++">
-                completion_signatures&lt;
-                  <i>unary-set-value-signature</i>&lt;As>..., set_error_t(Bs)...>
-                </pre>
-
-                where <code><i>unary-set-value-signature</i>&lt;T></code> is an alias for `set_value_t()` if `T` is `void`; otherwise, `set_value_t(T)`.
+            <pre highlight="c++">
+            template &lt;class... As>
+              <i>potentially-throwing</i> =
+                bool_constant&lt;is_nothrow_invocable_v&lt;F, As...>>;
+            </pre>
 
     If the function selected above does not return a sender that invokes `f` with the result of the `set_value` signal of `s`, passing the return value as the value to any connected receivers, and propagates the other completion-signals sent by `s`, the behavior of calling `execution::then(s, f)` is undefined.
 
@@ -5094,7 +5091,8 @@ are all well-formed.
 
         1. Constructs a receiver `r` such that:
 
-            1. `execution::set_value(r, args...)` is expression-equivalent to `execution::set_value(out_r, args...)`.
+            1. `execution::set_value(r, args...)` is expression-equivalent to
+                `execution::set_value(out_r, args...)`.
 
             2. When `execution::set_error(r, e)` is called, let `v` be the
                 expression `invoke(f', e)`. If `decltype(v)` is `void`, calls
@@ -5105,52 +5103,46 @@ are all well-formed.
                 ill-formed, the expression `execution::set_error(r, e)` is
                 ill-formed.
 
-            3. `execution::set_stopped(r)` is expression-equivalent to `execution::set_stopped(out_r)`.
+            3. `execution::set_stopped(r)` is expression-equivalent to
+                `execution::set_stopped(out_r)`.
 
         2. Returns an expression equivalent to `execution::connect(s, r)`.
 
-        3. Given some expression `e`, let `E` be `decltype((e))`. If
-            `sender<S, E>` is `false`, the type of
-            `tag_invoke(get_completion_signatures, s2, e)` shall be equivalent to
-            `dependent_completion_signatures<E>`. Otherwise, let `V` be
-            <code>error_types_of_t&lt;S, E, <i>result-type-list</i>></code>,
-            where <code><i>result-type-list</i></code> is the alias template:
+        3. Let <code><i>compl-sig-t</i>&lt;Tag, Args...></code> name the type
+            `Tag()` if `Args...` is a template paramter pack containing the
+            single type `void`; otherwise, `Tag(Args...)`. Given
+            subexpressions `s2` and `e` where `s2` is a sender returned from
+            `upon_error` or a copy of such, let `S2` be `decltype((s2))` and let
+            `E` be `decltype((e))`. The type of
+            `tag_invoke(get_completion_signatures, s2, e)` shall be equivalent
+            to:
 
             <pre highlight="c++">
-            template &lt;class... Ts>
-              using <i>result-type-list</i> = <i>type-list</i>&lt;invoke_result_t&lt;F, Ts>...>;
+            make_completion_signatures&lt;
+              copy_cvref_t&lt;S2, S>, E, <i>set-error-signature</i>,
+                <i>default-set-value</i>, <i>set-error-completion</i>>;
             </pre>
 
-            1. If `V` is ill-formed, type of `tag_invoke(get_completion_signatures, s2, e)`
-                shall be equivalent to `dependent_completion_signatures<E>`.
+            where <code><i>set-error-completion</i></code> is the template alias:
 
-            2. Otherwise, let  `As...` be the set of types in the
-                <code><i>type-list</i></code> named by `V`, let `Bs...` be the
-                set of types in the <code><i>type-list</i></code> named by
-                <code>value_types_of_t&lt;S, E, <i>set-value-signature</i>,
-                <i>type-list</i>></code>, and let `Cs...` be the unique set of
-                types in <code>[<i>unary-set-value-signature</i>&lt;As>...,
-                Bs...]</code>, where
-                <code><i>unary-set-value-signature</i>&lt;T></code> is an alias for
-                `set_value_t()` if `T` is `void`; otherwise, `set_value_t(T)`, and
-                <code><i>set-value-signature</i></code> is the alias template:
+            <pre highlight="c++">
+            template &lt;class E>
+              <i>set-error-completion</i> =
+                completion_signatures&lt;<i>compl-sig-t</i>&lt;set_value_t, invoke_result_t&lt;F, E>>>
+            </pre>
 
-                    <pre highlight="c++">
-                    template &lt;class... Ts>
-                      using <i>set-value-signature</i> = set_value_t(Ts...);
-                    </pre>
-            
-            3. If `completion_signatures_of_t<S, E>::sends_stopped` is `true`, the type of `tag_invoke(get_completion_signatures, s2, e)` shall be equivalent to:
+            and <code><i>set-error-signature</i></code> is an alias for
+            `completion_signatures<set_error_t(exception_ptr)>` if any of the types
+            in the <code><i>type-list</i></code> named by
+            <code>error_types_of_t&lt;copy_cvref_t&lt;S2, S>, E, <i>potentially-throwing</i>></code>
+            are `true_type`; otherwise, `completion_signatures<>`, where
+            <code><i>potentially-throwing</i></code> is the template alias:
 
-                <pre highlight="c++">
-                completion_signatures&lt;Cs..., set_error_t(exception_ptr), set_stopped_t()>
-                </pre>
-
-                Otherwise:
-
-                <pre highlight="c++">
-                completion_signatures&lt;Cs..., set_error_t(exception_ptr)>
-                </pre>
+            <pre highlight="c++">
+            template &lt;class... Es>
+              <i>potentially-throwing</i> =
+                <i>type-list</i>&lt;bool_constant&lt;is_nothrow_invocable_v&lt;F, Es>>...>;
+            </pre>
 
     If the function selected above does not return a sender which invokes `f` with the result of the `set_error` signal of `s`, passing the return value as the value to any connected receivers, and propagates the other completion-signals sent by `s`, the behavior of calling `execution::upon_error(s, f)` is undefined.
 
@@ -5193,232 +5185,128 @@ are all well-formed.
 
         2. Returns an expression equivalent to `execution::connect(s, r)`.
 
-        3. Given some expression `e`, let `E` be `decltype((e))`. If
-            `sender<S, E>` is `false`, the type of
-            `tag_invoke(get_completion_signatures, s2, e)` shall be equivalent to
-            `dependent_completion_signatures<E>`. Otherwise, let `Vs...` be
-            the set of types in the <code><i>type-list</i></code> named by
-            <code>value_types_of_t&lt;S, E, <i>set-value-signature</i>,
-            <i>type-list</i>></code> and let `Es...` be the unique set of types
-            in the <code><i>type-list</i></code> named by
-            <code>error_types_of_t&lt;S, E, <i>type-list</i>></code> with the
-            addition of `exception_ptr`, where
-            <code><i>set-value-signature</i></code> is the alias template:
+        3. Let <code><i>compl-sig-t</i>&lt;Tag, Args...></code> name the type
+            `Tag()` if `Args...` is a template paramter pack containing the
+            single type `void`; otherwise, `Tag(Args...)`. Given
+            subexpressions `s2` and `e` where `s2` is a sender returned from
+            `upon_stopped` or a copy of such, let `S2` be `decltype((s2))` and let
+            `E` be `decltype((e))`. The type of
+            `tag_invoke(get_completion_signatures, s2, e)` shall be equivalent
+            to:
 
             <pre highlight="c++">
-            template &lt;class... Ts>
-              using <i>set-value-signature</i> = set_value_t(Ts...);
+            make_completion_signatures&lt;
+              copy_cvref_t&lt;S2, S>, E, <i>set-error-signature</i>,
+                <i>default-set-value</i>, <i>default-set-error</i>, <i>set-stopped-completions</i>>;
             </pre>
 
-        4. If `invoke_result_t<F>` is `void`, let `B` be `set_value_t()`;
-            otherwise, let `B` be `set_value_t(invoke_result_t<F>)`. Let `As...`
-            be the unique set of types in `[Vs..., B]`. The type of
-            `tag_invoke(get_completion_signatures, s2, e)` shall be equivalent to:
-
-                <pre highlight="c++">
-                completion_signatures&lt;As..., set_error_t(Es)...>
-                </pre>
+            where <code><i>set-stopped-completions</i></code> names the type
+            <code>completion_signatures&lt;<i>compl-sig-t</i>&lt;set_value_t,
+            invoke_result_t&lt;F>></code>, and
+            <code><i>set-error-signature</i></code> names the type
+            `completion_signatures<set_error_t(exception_ptr)>` if
+            `is_nothrow_invocable_v<F>` is `true`, or `completion_signatures<>`
+            otherwise.
+            </pre>
 
     If the function selected above does not return a sender which invokes `f` when `s` completes by calling `set_stopped`, passing the return value as the value to any connected receivers, and propagates the other completion-signals sent by `s`, the behavior of calling `execution::upon_stopped(s, f)` is undefined.
 
-#### `execution::let_value` <b>[exec.let_value]</b> #### {#spec-execution.senders.adapt.let_value}
+#### `execution::let_value`, `execution::let_error`, `execution::let_stopped`,  <b>[exec.let]</b> #### {#spec-execution.senders.adapt.let}
 
 1. `execution::let_value` is used to insert continuations creating more work dependent on the results of their input senders into a sender chain.
+    `execution::let_error` is used to insert continuations creating more work dependent on the error of its input senders into a sender chain.
+    `execution::let_stopped` is used to insert continuations creating more work dependent on the stopped signal of its input senders into a sender chain.
 
-2. The name `execution::let_value` denotes a customization point object. For some subexpressions `s` and `f`, let `S` be `decltype((s))`, let `F` be the decayed type of `f`, and let `f'` be an xvalue that refers to an object decay-copied from `f`. If `S` does not satisfy `execution::sender`, `execution::let_value` is ill-formed. Otherwise, the expression
-    `execution::let_value(s, f)` is expression-equivalent to:
+2. The names `execution::let_value`, `execution::let_error`, and `execution::let_stopped` denote a customization point object.
+    Let the expression <code><i>let-cpo</i></code> be one of `execution::let_value`, `execution::let_error`, or `execution::let_stopped`.
+    For some subexpressions `s` and `f`, let `S` be `decltype((s))`, let `F` be the decayed type of `f`, and let `f'` be an xvalue that refers to an object decay-copied from `f`.
+    If `S` does not satisfy `execution::sender`, the expression <code><i>let-cpo</i>(s, f)</code> is ill-formed.
+    If `F` does not satisfy `invocable`, the expression `execution::let_stopped(s, f)` is ill-formed.
+    Otherwise, the expression
+    <code><i>let-cpo</i>(s, f)</code> is expression-equivalent to:
 
-    1. `tag_invoke(execution::let_value, get_completion_scheduler<set_value_t>(s), s, f)`, if that expression is valid.
-
-        * <i>Mandates:</i> The type of the `tag_invoke` expression above satisfies `execution::sender`.
-
-    2. Otherwise, `tag_invoke(execution::let_value, s, f)`, if that expression is valid.
-
-        * <i>Mandates:</i> The type of the `tag_invoke` expression above satisfies `execution::sender`.
-
-    3. Otherwise, given a receiver `out_r` and an lvalue `out_r'` refering to an object decay-copied from `out_r`.
-    
-        1. Let `r` be an rvalue of a receiver type `R` such that:
-    
-            1. When `execution::set_value(r, args...)` is called, decay-copies `args...` into `op_state2` as `args'...`, then calls `invoke(f', args'...)`, resulting in a sender `s3`. It then calls `execution::connect(s3, std::move(out_r'))`, resulting in an operation state
-                `op_state3`. `op_state3` is saved as a part of `op_state2`. It then calls `execution::start(op_state3)`. If any of these throws an exception, it catches it and calls `execution::set_error(std::move(out_r'), current_exception())`. If any of these expressions would be ill-formed, `execution::set_value(r, args...)` is ill-formed.
-
-            2. `execution::set_error(r, e)` is expression-equivalent to `execution::set_error(std::move(out_r'), e)`.
-
-            3. `execution::set_stopped(r)` is expression-equivalent to `execution::set_stopped(std::move(out_r'))`.
-
-        2. `execution::let_value(s, f)` returns a sender `s2` such that:
-        
-            1. If the expression `execution::connect(s, r)` is ill-formed, `execution::connect(s2, out_r)` is ill-formed.
-            
-            2. Otherwise, let `op_state2` be the result of `execution::connect(s, r)`. `execution::connect(s2, out_r)` returns an operation state `op_state` that stores `op_state2`. `execution::start(op_state)` is expression-equivalent to `execution::start(op_state2)`.
-
-        3. Given some expression `e`, let `E` be `decltype((e))`. If `sender<S, E>` is `false`, the type of `tag_invoke(get_completion_signatures, s2, e)` shall be equivalent to `dependent_completion_signatures<E>`. Otherwise, let `Xs...` be the set of types in the <code><i>type-list</i></code> named by <code>error_types_of_t&lt;S, E, <i>type-list</i>></code>, and let `V` be <code>value_types_of_t&lt;S, E, <i>result-type</i>, <i>type-list</i>></code>, where <code><i>result-type</i></code> is the alias template:
-
-            <pre highlight="c++">
-            template &lt;class... Ts>
-              using <i>result-type</i> = invoke_result_t&lt;F, decay_t&lt;Ts>&...>;
-            </pre>
-
-            1. If `V` is ill-formed, type of `tag_invoke(get_completion_signatures, s2, e)` shall be equivalent to `dependent_completion_signatures<E>`.
-
-            2. Otherwise, let  `S3s...` be the unique set of types in the <code><i>type-list</i></code> named by `V`. If `(sender<S3s, E> &&...)` is `false`, the type of `tag_invoke(get_completion_signatures, s2, e)` shall be equivalent to `dependent_completion_signatures<E>`.
-
-            3. Otherwise, for each type <code>S3<i><sub>i</sub></i></code> in `S3s...`, let <code>Vs<i><sub>i</sub></i>...</code> be the list of types in the <code><i>type-list</i></code> named by <code>value_types_of_t&lt;S3<i><sub>i</sub></i>, E, <i>set-value-signature</i>, <i>type-list</i>></code>, let <code>Es<i><sub>i</sub></i>...</code> be the list of types in the <code><i>type-list</i></code> named by <code>error_types_of_t&lt;S3<i><sub>i</sub></i>, E, <i>type-list</i>></code>, and let <code>Ds<i><sub>i</sub></i>...</code> be the list of values <code>completion_signatures_of_t&lt;S3s, E>::sends_stopped...</code>, where <code><i>set-value-signature</i></code> is the following alias template:
-
-                    <pre highlight="c++">
-                    template &lt;class... Ts>
-                      using <i>set-value-signature</i> = set_value_t(Ts...);
-                    </pre>
-
-            4. Let `Us...` be the set of unique types in <code>[Vs<i><sub>0</sub></i>..., Vs<i><sub>1</sub></i>..., ... Vs<i><sub>n-1</sub></i>...]</code> and let `Ws...` be the unique set of types in <code>[exception_ptr, Xs..., Es<i><sub>0</sub></i>..., Es<i><sub>1</sub></i>..., ... Es<i><sub>n-1</sub></i>...]</code>, where <code><i>n</i></code> is `sizeof...(S3s)`.
-
-            5. If either `completion_signatures_of_t<S, E>::sends_stopped` or `(Ds ||...)` is `true`, the type of `get_completion_signatures(s2, e)` is equivalent to:
-
-                <pre highlight="c++">
-                completion_signatures &ltUs..., set_error_t(Ws)..., set_stopped_t()>
-                </pre>
-
-                Otherwise:
-
-                <pre highlight="c++">
-                completion_signatures &ltUs..., set_error_t(Ws)...>
-                </pre>
-
-    If `execution::let_value(s, f)` does not return a sender that invokes `f` when `set_value` is called, and making its completion dependent on the completion of a sender returned by `f`, and propagates the other completion-signals sent by `s`, the behavior of calling `execution::let_value(s, f)` is undefined.
-
-#### `execution::let_error` <b>[exec.let_error]</b> #### {#spec-execution.senders.adapt.let_error}
-
-1. `execution::let_error` is used to insert continuations creating more work dependent on the error of its input senders into a sender chain.
-
-2. The name `execution::let_error` denotes a customization point object. For some subexpressions `s` and `f`, let `S` be `decltype((s))`, let `F` be the decayed type of `f`, and let `f'` be an xvalue that refers to an object decay-copied from `f`. If `S` does not satisfy `execution::sender`, `execution::let_error` is ill-formed. Otherwise, the expression
-    `execution::let_error(s, f)` is expression-equivalent to:
-
-    1. `tag_invoke(execution::let_error, get_completion_scheduler<set_value_t>(s), s, f)`, if that expression is valid.
+    1. <code>tag_invoke(<i>let-cpo</i>, get_completion_scheduler&lt;set_value_t>(s), s, f)</code>, if that expression is valid.
 
         * <i>Mandates:</i> The type of the `tag_invoke` expression above satisfies `execution::sender`.
 
-    2. Otherwise, `tag_invoke(execution::let_error, s, f)`, if that expression is valid.
+    2. Otherwise, <code>tag_invoke(<i>let-cpo</i>, s, f)</code>, if that expression is valid.
 
         * <i>Mandates:</i> The type of the `tag_invoke` expression above satisfies `execution::sender`.
 
     3. Otherwise, given a receiver `out_r` and an lvalue `out_r'` refering to an object decay-copied from `out_r`.
+
+        1. For `execution::let_value`, let `set-cpo` be `execution::set_value`.
+            For `execution::let_error`, let `set-cpo` be `execution::set_error`.
+            For `execution::let_stopped`, let `set-cpo` be `execution::set_stopped`.
+            Let <code><i>signal</i></code> be one of `execution::set_value`, `execution::set_error`, or `execution::set_stopped`.
     
-        1. Let `r` be an rvalue of a receiver type `R` such that:
+        2. Let `r` be an rvalue of a receiver type `R` such that:
     
-            1. `execution::set_value(r, args...)` is expression-equivalent to `execution::set_value(std::move(out_r'), args...)`.
+            1. When <code><i>set-cpo</i>(r, args...)</code> is called, the receiver `r` decay-copies `args...` into `op_state2` as `args'...`, then calls `invoke(f', args'...)`, resulting in a sender `s3`.
+                It then calls `execution::connect(s3, std::move(out_r'))`, resulting in an operation state `op_state3`.
+                `op_state3` is saved as a part of `op_state2`.
+                It then calls `execution::start(op_state3)`.
+                If any of these throws an exception, it catches it and calls `execution::set_error(std::move(out_r'), current_exception())`.
+                If any of these expressions would be ill-formed, <code><i>set-cpo</i>(r, args...)</code> is ill-formed.
 
-            2. When `execution::set_error(r, e)` is called, decay-copies `e` into `op_state2` as `e'`, then calls `invoke(f', e')`, resulting in a sender `s3`. It then calls `execution::connect(s3, std::move(out_r'))`, resulting in an operation state
-                `op_state3`. `op_state3` is saved as a part of `op_state2`. It then calls `execution::start(op_state3)`. If any of these throws an exception, it catches it and calls `execution::set_error(std::move(out_r'), current_exception())`. If any of these expressions would be ill-formed, `execution::set_error(r, e)` is ill-formed.
+            2. <code><i>signal</i>(r, args...)</code> is expression-equivalent to <code><i>signal</i>(std::move(out_r'), args...)</code>, when <code><i>signal</i></code> is different from <code><i>set-cpo</i></code>.
 
-            3. `execution::set_stopped(r)` is expression-equivalent to `execution::set_stopped(std::move(out_r'))`.
-
-        2. `execution::let_error(s, f)` returns a sender `s2` such that:
+        3. <code><i>let-cpo</i>(s, f)</code>  returns a sender `s2` such that:
         
             1. If the expression `execution::connect(s, r)` is ill-formed, `execution::connect(s2, out_r)` is ill-formed.
-            
+
             2. Otherwise, let `op_state2` be the result of `execution::connect(s, r)`. `execution::connect(s2, out_r)` returns an operation state `op_state` that stores `op_state2`. `execution::start(op_state)` is expression-equivalent to `execution::start(op_state2)`.
 
-        3. Given some expression `e`, let `E` be `decltype((e))`. If `sender<S, E>` is `false`, the type of `tag_invoke(get_completion_signatures, s2, e)` shall be equivalent to `dependent_completion_signatures<E>`. Otherwise, let `As...` be the set of types in the <code><i>type-list</i></code> named by <code>value_types_of_t&lt;S, E, <i>set-value-signature</i>, <i>type-list</i>></code>, and let `W` be <code>error_types_of_t&lt;S, E, <i>result-type-list</i>></code>, where <code><i>set-value-signature</i></code> is the alias template:
-        
-            <pre highlight="c++">
-            template &lt;class... Ts>
-              using <i>set-value-signature</i> = set_value_t(Ts...);
-            </pre>
-        
-            and <code><i>result-type-list</i></code> is the alias template:
+        4. Given subexpressions `s2` and `e`, where `s2` is a sender returned
+            from <code><i>let-cpo</i>(s, f)</code> or a copy of such, let `S2` be
+            `decltype((s2))`, let `E` be `decltype((e))`, and let `S'` be
+            `copy_cvref_t<S2, S>`. Then the type of
+            `tag_invoke(get_completion_signatures, s2, e)` is specified as
+            follows:
 
-            <pre highlight="c++">
-            template &lt;class... Ts>
-              using <i>result-type-list</i> =
-                <i>type-list</i>&lt;invoke_result_t&lt;F, decay_t&lt;Ts>&>...>;
-            </pre>
+            1. If `sender<S', E>` is `false`, the type of
+                `tag_invoke(get_completion_signatures, s2, e)` shall be equivalent
+                to `dependent_completion_signatures<E>`.
 
-            1. If `W` is ill-formed, type of `tag_invoke(get_completion_signatures, s2, e)` shall be equivalent to `dependent_completion_signatures<E>`.
-
-            2. Otherwise, let  `S3s...` be the unique set of types in the <code><i>type-list</i></code> named by `W`. If `(sender<S3s, E> &&...)` is `false`, the type of `tag_invoke(get_completion_signatures, s2, e)` shall be equivalent to `dependent_completion_signatures<E>`.
+            2. Otherwise, let `Sigs...` be the set of template arguments of the
+                `completion_signatures` specialization named by `completion_signatures_of_t<S', E>`,
+                let `Sigs2...` be the set of function types in `Sigs...` whose return type
+                is <code><i>set-cpo</i></code>, and let `Rest...` be the set of function types
+                in `Sigs...` but not `Sigs2...`.
             
-            3. Otherwise, for each type <code>S3<i><sub>i</sub></i></code> in `S3s...`, let <code>Vs<i><sub>i</sub></i>...</code> be the list of types in the <code><i>type-list</i></code> named by <code>value_types_of_t&lt;S3<i><sub>i</sub></i>, E, <i>set-value-signature</i>, <i>type-list</i>></code>, let <code>Es<i><sub>i</sub></i>...</code> be the list of types in the <code><i>type-list</i></code> named by <code>error_types_of_t&lt;S3<i><sub>i</sub></i>, E, <i>type-list</i>></code>, and let <code>Ds<i><sub>i</sub></i>...</code> be the list of values <code>completion_signatures_of_t&lt;S3s, E>::sends_stopped...</code>.
+            3. For each <code>Sig2<i><sub>i</sub></i></code> in `Sigs2...`, let
+                <code>Vs<i><sub>i</sub></i>...</code> be the set of function
+                arguments in <code>Sig2<i><sub>i</sub></i></code> and let
+                <code>S3<i><sub>i</sub></i></code> be <code>invoke_result_t&lt;F,
+                decay_t&lt;Vs<i><sub>i</sub></i>>&amp;...></code>. If
+                <code>S3<i><sub>i</sub></i></code> is ill-formed, or if
+                <code>sender&lt;S3<i><sub>i</sub></i>, E></code> is not satisfied,
+                then the type of `tag_invoke(get_completion_signatures, s2, e)`
+                shall be equivalent to `dependent_completion_signatures<E>`.
 
-            4. Let `Us...` be the set of unique types in <code>[As..., Vs<i><sub>0</sub></i>..., Vs<i><sub>1</sub></i>..., ... Vs<i><sub>n-1</sub></i>...]</code> and let `Ws...` be the unique set of types in <code>[exception_ptr, Es<i><sub>0</sub></i>..., Es<i><sub>1</sub></i>..., ... Es<i><sub>n-1</sub></i>...]</code>, where <code><i>n</i></code> is `sizeof...(S3s)`.
+            4. Otherwise, let <code>Sigs3<i><sub>i</sub></i>...</code> be the
+                set of template arguments of the `completion_signatures`
+                specialization named by
+                <code>completion_signatures_of_t&lt;S3<i><sub>i</sub></i>,
+                E></code>. Then the type of `tag_invoke(get_completion_signatures,
+                s2, e)` shall be equivalent to
+                <code>completion_signatures&lt;Sigs3<i><sub>0</sub></i>...,
+                Sigs3<i><sub>1</sub></i>..., ... Sigs3<i><sub>n-1</sub></i>...,
+                Rest..., set_error_t(exception_ptr)></code>, where
+                <code><i>n</i></code> is `sizeof...(Sigs2)`.
 
-            5. If either `completion_signatures_of_t<S, E>::sends_stopped` or `(Ds ||...)` is `true`, the type of `get_completion_signatures(s2, e)` is equivalent to:
-
-                <pre highlight="c++">
-                completion_signatures &ltUs..., set_error_t(Ws)..., set_stopped_t()>
-                </pre>
-
-                Otherwise:
-
-                <pre highlight="c++">
-                completion_signatures &ltUs..., set_error_t(Ws)...>
-                </pre>
-
-    If `execution::let_error(s, f)` does not return a sender that invokes `f` when `set_error` is called, and making its completion dependent on the completion of a sender returned by `f`, and propagates the other completion-signals sent by `s`, the behavior of calling `execution::let_error(s, f)` is undefined.
-
-#### `execution::let_stopped` <b>[exec.let_stopped]</b> #### {#spec-execution.senders.adapt.let_stopped}
-
-1. `execution::let_stopped` is used to insert continuations creating more work dependent on the error its input senders into a sender chain.
-
-2. The name `execution::let_stopped` denotes a customization point object. For some subexpressions `s` and `f`, let `S` be `decltype((s))`, let `F` be the decayed type of `f`, and let `f'` be an xvalue that refers to an object decay-copied from `f`. If `S` does not satisfy `execution::sender` or if `F` does not satisfy `invocable`, `execution::let_stopped` is ill-formed. Otherwise, the expression
-    `execution::let_stopped(s, f)` is expression-equivalent to:
-
-    1. `tag_invoke(execution::let_stopped, get_completion_scheduler<set_value_t>(s), s, f)`, if that expression is valid.
-
-        * <i>Mandates:</i> The type of the `tag_invoke` expression above satisfies `execution::sender`.
-
-    2. Otherwise, `tag_invoke(execution::let_stopped, s, f)`, if that expression is valid.
-
-        * <i>Mandates:</i> The type of the `tag_invoke` expression above satisfies `execution::sender`.
-
-    3. Otherwise, given a receiver `out_r` and an lvalue `out_r'` refering to an object decay-copied from `out_r`.
-    
-        1. Let `r` be an rvalue of a receiver type `R` such that:
-    
-            1. `execution::set_value(r, args...)` is expression-equivalent to `execution::set_value(std::move(out_r'), args...)`.
-
-            2. `execution::set_error(r, e)` is expression-equivalent to `execution::set_value(std::move(out_r'), e)`.
-
-            3. When `execution::set_stopped(r)` is called, calls `invoke(f')`, resulting in a sender `s3`. It then calls `execution::connect(s3, std::move(out_r'))`, resulting in an operation state
-                `op_state3`. `op_state3` is saved as a part of `op_state2`. It then calls `execution::start(op_state3)`. If any of these throws an exception, it catches it and calls `execution::set_error(std::move(out_r'), current_exception())`. If any of these expressions would be ill-formed, `execution::set_stopped(r)` is ill-formed.
-
-        2. `execution::let_stopped(s, f)` returns a sender `s2` such that:
-        
-            1. If the expression `execution::connect(s, r)` is ill-formed, `execution::connect(s2, out_r)` is ill-formed.
-            
-            2. Otherwise, let `op_state2` be the result of `execution::connect(s, r)`. `execution::connect(s2, out_r)` returns an operation state `op_state` that stores `op_state2`. `execution::start(op_state)` is expression-equivalent to `execution::start(op_state2)`.
-
-        3. Given some expression `e`, let `E` be `decltype((e))`, and let `S3` be `invoke_result_t<F>`. If either `sender<S, E>` or `sender<S3, E>` is `false`, the type of `tag_invoke(get_completion_signatures, s2, e)` shall be equivalent to `dependent_completion_signatures<E>`. Otherwise, let `As...` be the set of types in the <code><i>type-list</i></code> named by <code>value_types_of_t&lt;S, E, <i>set-value-signature</i>, <i>type-list</i>></code>, and let `Ws...` be the types in the <code><i>type-list</i></code> named by <code>error_types_of_t&lt;S, E, <i>type-list</i>></code>, where <code><i>set-value-signature</i></code> is the alias template:
-        
-            <pre highlight="c++">
-            template &lt;class... Ts>
-              using <i>set-value-signature</i> = set_value_t(Ts...);
-            </pre>
-
-            1. Let `Vs...` be the list of types in the <code><i>type-list</i></code> named by <code>value_types_of_t&lt;S3, E, <i>set-value-signature</i>, <i>type-list</i>></code>, and let `Es...` be the list of types in the <code><i>type-list</i></code> named by <code>error_types_of_t&lt;S3, E, <i>type-list</i>></code>.
-
-            4. Let `Us...` be the set of unique types in `[As..., Vs...]` and let `Ws...` be the unique set of types in `[exception_ptr, Es...]`,.
-
-            5. If `completion_signatures_of_t<S3, E>::sends_stopped` is `true`, the type of `get_completion_signatures(s2, e)` is equivalent to:
-
-                <pre highlight="c++">
-                completion_signatures &ltUs..., set_error_t(Ws)..., set_stopped_t()>
-                </pre>
-
-                Otherwise:
-
-                <pre highlight="c++">
-                completion_signatures &ltUs..., set_error_t(Ws)...>
-                </pre>
-
-    If `execution::let_stopped(s, f)` does not return a sender that invokes `f` when `set_stopped` is called, and making its completion dependent on the completion of a sender returned by `f`, and propagates the other completion-signals sent by `s`, the behavior of calling `execution::let_stopped(s, f)` is undefined.
+    If <code><i>let-cpo</i>(s, f)</code> does not return a sender that invokes `f` when <code><i>set-cpo</i></code> is called, and makes its completion dependent on the completion of a sender returned by `f`, and propagates the other completion-signals sent by `s`, the behavior of calling <code><i>let-cpo</i>(s, f)</code> is undefined.
 
 #### `execution::bulk` <b>[exec.bulk]</b> #### {#spec-execution.senders.adapt.bulk}
 
 1. `execution::bulk` is used to run a task repeatedly for every index in an index space.
 
-2. The name `execution::bulk` denotes a customization point object. For some subexpressions `s`, `shape`, and `f`, let `S` be `decltype((s))`, `Shape` be `decltype((shape))`, and `F` be `decltype((f))`. If `S` does not satisfy `execution::sender` or `Shape`
-    does not satisfy `integral`, `execution::bulk` is ill-formed. Otherwise, the expression `execution::bulk(s, shape, f)` is expression-equivalent to:
+2. The name `execution::bulk` denotes a customization point object. For some
+    subexpressions `s`, `shape`, and `f`, let `S` be `decltype((s))`, `Shape` be
+    `decltype((shape))`, and `F` be `decltype((f))`. If `S` does not satisfy
+    `execution::sender` or `Shape` does not satisfy `integral`,
+    `execution::bulk` is ill-formed. Otherwise, the expression
+    `execution::bulk(s, shape, f)` is expression-equivalent to:
 
     1. `tag_invoke(execution::bulk, get_completion_scheduler<set_value_t>(s), s, shape, f)`, if that expression is valid.
 
@@ -5443,23 +5331,22 @@ are all well-formed.
 
         3. Returns an operation state `op_state` that contains `op_state2`. When `execution::start(op_state)` is called, calls `execution::start(op_state2)`.
 
-    4. Given an expression `e`, let `E` be `decltype((e))`. If `sender<S, E>` is
-        `false`, the type of `tag_invoke(get_completion_signatures, s2, e)` shall be
-        equivalent to `dependent_completion_signatures<E>`. Otherwise, let `Es...` be
-        the types in the <code><i>type-list</i></code> named by
-        <code>error_types_of_t&lt;S, E, <i>type-list</i>></code>, and let
-        `Bs...` be the set of unique types in `[Es..., exception_ptr]`. The type
-        of `tag_invoke(get_completion_signatures, s2, e)` shall be a class type `Tr`
-        such that, for variadic templates `Tuple` and `Variant`:
+        4. Given subexpressions `s2` and `e` where `s2` is a sender returned
+            from `bulk` or a copy of such, let `S2` be `decltype((s2))` and let
+            `E` be `decltype((e))`. The type of
+            `tag_invoke(get_completion_signatures, s2, e)` shall be equivalent
+            to:
 
-        1. `Tr::value_types<Tuple, Variant>` names the same type as `value_types_of_t<S, E, Tuple, Variant>`.
+            <pre highlight="c++">
+            make_completion_signatures&lt;
+              copy_cvref_t&lt;S2, S>, E, completion_signatures&lt;set_error_t(exception_ptr)>>
+            </pre>
 
-        2. `Tr::error_types<Variant>` names the type `Variant<Bs...>`.
-
-        3. `Tr::sends_stopped` is a core constant expression of type `bool` and value `completion_signatures_of_t<S, E>::sends_stopped`.
-
-    If the function selected above does not return a sender which invokes `f(i, args...)` for each `i` of type `Shape` from `0` to `shape` when the input sender sends values `args...`, or does not propagate the values of the signals sent by the input sender to
-        a connected receiver, the behavior of calling `execution::bulk(s, shape, f)` is undefined.
+    4. If the function selected above does not return a sender which invokes
+        `f(i, args...)` for each `i` of type `Shape` from `0` to `shape` when
+        the input sender sends values `args...`, or does not propagate the
+        values of the signals sent by the input sender to a connected receiver,
+        the behavior of calling `execution::bulk(s, shape, f)` is undefined.
 
 #### `execution::split` <b>[exec.split]</b> #### {#spec-execution.senders.adapt.split}
 
@@ -5467,7 +5354,7 @@ are all well-formed.
 
 2. Let <code><i>split-env</i></code> be the type of an execution environment such that, given an instance `e`, the expression `get_stop_token(e)` is well formed and has type `stop_token`.
 
-2. The name `execution::split` denotes a customization point object. For some
+3. The name `execution::split` denotes a customization point object. For some
     subexpression `s`, let `S` be `decltype((s))`. If
     <code>execution::sender&lt;S, <i>split-env</i>></code> is `false`,
     `execution::split` is ill-formed. Otherwise, the expression
@@ -5487,7 +5374,7 @@ are all well-formed.
         1. Creates an object `sh_state` that contains a `stop_source`, a list of
             pointers to operation states awaiting the completion of `s`, and that
             also reserves space for storing:
-        
+
             * the operation state that results from connecting `s` with `r` described below, and
             * the sets of values and errors with which `s` may complete, with
                 the addition of `exception_ptr`.
@@ -5520,7 +5407,7 @@ are all well-formed.
 
         4. When `s2` is connected with a receiver `out_r` of type `OutR`, it
             returns an operation state object `op_state` that contains:
-        
+
               * An object `out_r'` of type `OutR` decay-copied from `out_r`,
               * A reference to `sh_state`,
               * A stop callback of type
@@ -5536,9 +5423,9 @@ are all well-formed.
                   }
                 };
                 </pre>
-        
+
         5. When `execution::start(op_state)` is called:
-            
+
             * If `r`'s receiver contract has already been satisfied, then let
                 <code><i>Signal</i></code> be whichever receiver completion-signal
                 was used to complete r's receiver contract ([exec.recv]). Calls
@@ -5552,7 +5439,7 @@ are all well-formed.
                 <code><i>stop-callback-fn</i>{<i>stop-src</i>}</code>, where
                 <code><i>stop-src</i></code> refers to the stop source of
                 `sh_state`.
-            
+
             * Then, it checks to see if
                 <code><i>stop-src</i>.stop_requested()</code> is `true`. If so, it
                 calls `execution::set_stopped(out_r')`.
@@ -5570,44 +5457,42 @@ are all well-formed.
             where `args2...` is a pack of lvalues referencing the subobjects of
             `sh_state` that have been saved by the original call to
             <code><i>Signal</i>(r, args...)</code>.
-        
-        5. Ownership of `sh_state` is shared by `s2` and by every `op_state`
+
+        7. Ownership of `sh_state` is shared by `s2` and by every `op_state`
             that results from connecting `s2` to a receiver.
 
-    4. Given an expression `e`, let `E` be `decltype((e))`. If `sender<S,
-        E>` is `false`, the type of `tag_invoke(get_completion_signatures, s2, e)` shall
-        be equivalent to `dependent_completion_signatures<E>`. Otherwise, let
-        `Vs...` be the set of unique types in the <code><i>type-list</i></code>
-        named by <code>value_types_of_t&lt;S, E, <i>set-value-signature</i>,
-        <i>type-list</i>></code>, and let `Es...` be the set of types in the <code><i>type-list</i></code> named by <code>error_types_of_t&lt;S, E, <i>error-types</i>></code>, where <code><i>set-value-signature</i></code>
-        is the alias template:
+        8. Given subexpressions `s2` and `e` where `s2` is a sender returned
+            from `split` or a copy of such, let `S2` be `decltype((s2))`
+            and let `E` be `decltype((e))`. The type of
+            `tag_invoke(get_completion_signatures, s2, e)` shall be equivalent
+            to:
+
+            <pre highlight="c++">
+            make_completion_signatures&lt;
+              copy_cvref_t&lt;S2, S>, E, completion_signatures&lt;set_error_t(exception_ptr)>,
+                <i>value-signatures</i>, <i>error-signatures</i>>;
+            </pre>
+
+            where <code><i>value-signatures</i></code>
+            is the alias template:
 
             <pre highlight="c++">
             template &lt;class... Ts>
-              using <i>set-value-signature</i> = set_value_t(decay_t&lt;Ts>&amp;...);
+              using <i>value-signatures</i> =
+                completion_signatures&lt;set_value_t(decay_t&lt;Ts>&amp;...)>;
             </pre>
 
-            and <code><i>error-types</i></code> is the alias template:
+            and <code><i>error-signatures</i></code> is the alias template:
 
             <pre highlight="c++">
-            template &lt;class... Es>
-              using <i>error-types</i> = <i>type-list</i>&lt;decay_t&lt;Es>&amp;...>;
+            template &lt;class E>
+              using <i>error-signatures</i> =
+                completion_signatures&lt;set_error_t(decay_t&lt;E>&amp;)>;
             </pre>
 
-            Let `Bs...` be the set of unique types in `[Es..., exception_ptr&]`. If `completion_signatures_of_t<S, E>::sends_stopped` is `true`, then the type of `tag_invoke(get_completion_signatures, s2, e)` is a class type equivalent to:
-
-            <pre highlight="c++">
-            completion_signatures&lt;Vs..., set_error_t(Bs)..., set_stopped_t()>
-            </pre>
-
-            Otherwise:
-
-            <pre highlight="c++">
-            completion_signatures&lt;Vs..., set_error_t(Bs)...>
-            </pre>
-
-    If the function selected above does not return a sender which sends references to values sent by `s`, propagating the other channels, the 
-behavior of calling `execution::split(s)` is undefined.
+    4. If the function selected above does not return a sender which sends
+        references to values sent by `s`, propagating the other channels, the
+        behavior of calling `execution::split(s)` is undefined.
 
 #### `execution::when_all` <b>[exec.when_all]</b> #### {#spec-execution.senders.adaptor.when_all}
 
@@ -5621,12 +5506,18 @@ behavior of calling `execution::split(s)` is undefined.
 
     Otherwise, the expression <code>execution::when_all(s<i><sub>i</sub></i>...)</code> is expression-equivalent to:
 
-    1. <code>tag_invoke(execution::when_all, s<i><sub>i</sub></i>...)</code>, if that expression is valid. If the function selected by `tag_invoke` does not return a sender that sends a concatenation of values sent by <code>s<i><sub>i</sub></i>...</code> when they all complete with `set_value`, the behavior
-of calling <code>execution::when_all(s<i><sub>i</sub></i>...)</code> is undefined.
+    1. <code>tag_invoke(execution::when_all, s<i><sub>i</sub></i>...)</code>, if
+        that expression is valid. If the function selected by `tag_invoke` does
+        not return a sender that sends a concatenation of values sent by
+        <code>s<i><sub>i</sub></i>...</code> when they all complete with
+        `set_value`, the behavior of calling
+        <code>execution::when_all(s<i><sub>i</sub></i>...)</code> is undefined.
 
         * <i>Mandates:</i> The type of the `tag_invoke` expression above satisfies `execution::sender`.
 
-    2. Otherwise, constructs a sender `w` of type `W`. When `w` is connected with some receiver `out_r` of type `OutR`, it returns an operation state `op_state` specified as below:
+    2. Otherwise, constructs a sender `w` of type `W`. When `w` is connected
+        with some receiver `out_r` of type `OutR`, it returns an operation state
+        `op_state` specified as below:
 
         1. For each sender <code>s<i><sub>i</sub></i></code>, constructs a receiver <code>r<i><sub>i</sub></i></code> such that:
 
@@ -5663,29 +5554,57 @@ of calling <code>execution::when_all(s<i><sub>i</sub></i>...)</code> is undefine
 
             * Otherwise, calls <code>execution::start(child_op<i><sub>i</sub></i>)</code> for each <code>child_op<i><sub>i</sub></i></code>.
 
-        5. Given some expression `e`, let `E` be `decltype((e))` and let `WE` be a type such that `stop_token_of_t<WE>` is `in_place_stop_token` and `tag_invoke_result_t<Tag, WE, As...>` names the type, if any, of <code><i>call-result-t</i>&lt;Tag, E, As...></code> for all types `As...` and all `Tag` besides `get_stop_token_t`.
-        
-          * If for any sender <code>S<i><sub>i</sub></i></code>, <code>sender&lt;S<i><sub>i</sub></i>, WE></code> is `false`, the type of `tag_invoke(get_completion_signatures, w, e)` shall be equivalent to `dependent_completion_signatures<E>`.
-          
-          * Otherwise, if type <code>value_types_of_t&lt;S<i><sub>i</sub></i>, WE, <i>decayed-tuple</i>, <i>zero-or-one</i>></code> is ill-formed, the type of `tag_invoke(get_completion_signatures, w, e)` shall be equivalent to `dependent_completion_signatures<E>`, where <code><i>zero-or-one</i></code> is an alias template equivalent to the following:
+        5. Given subexpressions `s2` and `e` where `s2` is a sender returned
+            from `when_all` or a copy of such, let `S2` be `decltype((s2))`, let
+            `E` be `decltype((e))`, and let `Ss...` be the decayed types of the
+            arguments to the `when_all` expression that created `s2`. If the
+            decayed type of `e` is `no_env`, let `WE` be `no_env`; otherwise,
+            let `WE` be a type such that `stop_token_of_t<WE>` is
+            `in_place_stop_token` and `tag_invoke_result_t<Tag, WE, As...>`
+            names the type, if any, of <code><i>call-result-t</i>&lt;Tag, E,
+            As...></code> for all types `As...` and all types `Tag` besides
+            `get_stop_token_t`. The type of
+            `tag_invoke(get_completion_signatures, s2, e)` shall be as follows:
 
-              <pre highlight="c++">
-              template &lt;class... Ts>
-                  requires (sizeof...(Ts) <= 1)
-                using <i>zero-or-one</i> = void;
-              </pre>
-              
-          * Otherwise, it shall be a class type `Tr` such that:
+            1. For each type <code>S<i><sub>i</sub></i></code> in `Ss...`, let
+                <code>S'<i><sub>i</sub></i></code> name the type
+                <code>copy_cvref_t&lt;S2, S<i><sub>i</sub></i>></code>. If for
+                any type <code>S'<i><sub>i</sub></i></code>, the type
+                <code>completion_signatures_of_t&lt;S'<i><sub>i</sub></i>,
+                WE></code> names a type other than an instantiation of
+                `completion_signatures`, the type of
+                `tag_invoke(get_completion_signatures, s2, e)` shall be
+                `dependent_completion_signatures<E>`.
 
-            * `Tr::value_types<Tuple, Variant>` is:
+            2. Otherwise, for each type <code>S'<i><sub>i</sub></i></code>, let
+                <code>Sigs<i><sub>i</sub></i>...</code> be the set of template
+                arguments in the instantiation of `completion_signatures` named
+                by <code>completion_signatures_of_t&lt;S'<i><sub>i</sub></i>,
+                WE></code>, and let <code>C<i><sub>i</sub></i></code> be the
+                count of function types in
+                <code>Sigs<i><sub>i</sub></i>...</code> for which the return
+                type is `set_value_t`. If any
+                <code>C<i><sub>i</sub></i></code> is two or greater, then the
+                type of `tag_invoke(get_completion_signatures, s2, e)` shall be
+                `dependent_completion_signatures<E>`.
 
-                * `Variant<>` if for any type <code>S<i><sub>i</sub></i></code>, the type <code>value_types_of_t&lt;S<i><sub>i</sub></i>, WE, Tuple, Variant></code> is `Variant<>`.
+            3. Otherwise, let <code>Sigs2<i><sub>i</sub></i>...</code> be the set of
+                function types in <code>Sigs<i><sub>i</sub></i>...</code> whose
+                return types are <i>not</i> `set_value_t`, and let `Ws...` be
+                the unique set of types in <code>[Sigs2<i><sub>0</sub></i>...,
+                Sigs2<i><sub>1</sub></i>..., ... Sigs2<i><sub>n-1</sub></i>...,
+                set_error_t(exception_ptr), set_stopped_t()]</code>, where
+                <code><i>n</i></code> is `sizeof...(Ss)`. If any
+                <code>C<i><sub>i</sub></i></code> is `0`, then the type of
+                `tag_invoke(get_completion_signatures, s2, e)` shall be
+                `completion_signatures<Ws...>`.
 
-                * Otherwise, <code>Variant&lt;Tuple&lt;V<i><sub>0</sub></i>..., V<i><sub>1</sub></i>,..., V<i><sub>n-1</sub></i>...>></code> where <code><i>n</i></code> is the count of types in <code>S<i><sub>i</sub></i>...</code>, and where <code>V<i><sub>i</sub></i>...</code> is a set of types such that for the type <code>S<i><sub>i</sub></i></code>, <code>value_types_of_t&lt;S<i><sub>i</sub></i>, WE, Tuple, Variant></code> is an alias for <code>Variant&lt;Tuple&lt;V<i><sub>i</sub></i>...>></code>.
-
-            * `Tr::error_types<Variant>` is <code>Variant&lt;U<i><sub>i</sub></i>...></code>, where <code>U<i><sub>i</sub></i>...</code> is the unique set of types in <code>[exception_ptr, E<i><sub>0</sub></i>..., E<i><sub>1</sub></i>,..., E<i><sub>n-1</sub></i>...]</code>, where <code>E<i><sub>i</sub></i>...</code> is a set of types such that for the type <code>S<i><sub>i</sub></i></code>, <code>error_types_of_t&lt;S<i><sub>i</sub></i>, WE, Variant></code> is an alias for <code>Variant&lt;E<i><sub>i</sub></i>...></code>.
-
-            * `Tr::sends_stopped` is `true`.
+            4. Otherwise, let <code>V<i><sub>i</sub></i>...</code> be the function
+                argument types of the single type in <code>Sigs<i><sub>i</sub></i>...</code>
+                for which the return type is `set_value_t`. Then the type of
+                `tag_invoke(get_completion_signatures, s2, e)` shall be
+                <code>completion_signatures&lt;Ws..., set_value_t(V<i><sub>0</sub></i>...,
+                V<i><sub>1</sub></i>..., ... V<i><sub>n-1</sub></i>...)></code>.
 
 3. The name `execution::when_all_with_variant` denotes a customization point object. For some subexpressions `s...`, let `S` be `decltype((s))`. If any type <code>S<i><sub>i</sub></i></code> in `S...` does not satisfy `execution::sender`,
     `execution::when_all_with_variant` is ill-formed. Otherwise, the expression `execution::when_all_with_variant(s...)` is expression-equivalent to:
@@ -5705,17 +5624,26 @@ of calling <code>execution::when_all(s<i><sub>i</sub></i>...)</code> is undefine
 
 #### `execution::transfer_when_all` <b>[exec.transfer_when_all]</b> #### {#spec-execution.senders.adaptor.transfer_when_all}
 
-1. `execution::transfer_when_all` is used to join multiple sender chains and create a sender whose execution is dependent on all of the input senders that only send a single set of values each, while also making sure
-    that they complete on the specified scheduler. `execution::transfer_when_all_with_variant` is used to join multiple sender chains and create a sender whose execution is dependent on all of the input
-    senders, which may have one or more sets of sent values. [<i>Note:</i> this can allow for better customization of the adaptors. --<i>end note</i>]
+1. `execution::transfer_when_all` is used to join multiple sender chains and
+    create a sender whose execution is dependent on all of the input senders
+    that only send a single set of values each, while also making sure that they
+    complete on the specified scheduler.
+    `execution::transfer_when_all_with_variant` is used to join multiple sender
+    chains and create a sender whose execution is dependent on all of the input
+    senders, which may have one or more sets of sent values. [<i>Note:</i> this
+    can allow for better customization of the adaptors. --<i>end note</i>]
 
 2. The name `execution::transfer_when_all` denotes a customization point object. For some subexpressions `sch` and `s...`, let `Sch` be `decltype(sch)` and `S` be `decltype((s))`. If `Sch` does not satisfy `scheduler`, or any type
     <code>S<i><sub>i</sub></i></code> in `S...` does not satisfy `execution::sender`,
     `execution::transfer_when_all` is ill-formed. Otherwise, the expression `execution::transfer_when_all(sch, s...)` is expression-equivalent to:
 
-    1. `tag_invoke(execution::transfer_when_all, sch, s...)`, if that expression is valid. If the function selected by `tag_invoke` does not return a sender that sends a concatenation of values sent by `s...` when
-        they all complete with `set_value`, or does not send its completion signals, other than ones resulting from a scheduling error, on an execution agent belonging to the associated execution context of `sch`, the behavior
-of calling `execution::transfer_when_all(sch, s...)` is undefined.
+    1. `tag_invoke(execution::transfer_when_all, sch, s...)`, if that expression
+        is valid. If the function selected by `tag_invoke` does not return a
+        sender that sends a concatenation of values sent by `s...` when they all
+        complete with `set_value`, or does not send its completion signals,
+        other than ones resulting from a scheduling error, on an execution agent
+        belonging to the associated execution context of `sch`, the behavior of
+        calling `execution::transfer_when_all(sch, s...)` is undefined.
 
         * <i>Mandates:</i> The type of the `tag_invoke` expression above satisfies `execution::sender`.
 
@@ -5769,7 +5697,7 @@ of calling `execution::transfer_when_all(sch, s...)` is undefined.
         2. `execution::set_error(r, e)` is expression-equivalent to `execution::set_error(out_r, e)`.
 
         3. `execution::set_stopped(r)` is expression-equivalent to `execution::set_stopped(out_r)`.
-        
+
     2. Calls `execution::connect(s, r)`, resulting in an operation state `op_state2`.
 
     3. Returns an operation state `op_state` that contains `op_state2`. When `execution::start(op_state)` is called, calls `execution::start(op_state2)`.
@@ -5837,7 +5765,7 @@ of calling `execution::transfer_when_all(sch, s...)` is undefined.
         1. Creates an object `sh_state` that contains a `stop_source`, an
             initially null pointer to an operation state awaitaing completion,
             and that also reserves space for storing:
-        
+
             * the operation state that results from connecting `s` with `r` described below, and
             * the sets of values and errors with which `s` may complete, with
                 the addition of `exception_ptr`.
@@ -5877,7 +5805,7 @@ of calling `execution::transfer_when_all(sch, s...)` is undefined.
 
         4. When `s2` is connected with a receiver `out_r` of type `OutR`, it
             returns an operation state object `op_state` that contains:
-        
+
               * An object `out_r'` of type `OutR` decay-copied from `out_r`,
               * A reference to `sh_state`,
               * A stop callback of type
@@ -5895,9 +5823,9 @@ of calling `execution::transfer_when_all(sch, s...)` is undefined.
                 </pre>
 
               `s2` transfers its ownership of `sh_state` to `op_state`.
-        
+
         5. When `execution::start(op_state)` is called:
-            
+
             * If `r`'s receiver contract has already been satisfied, then let
                 <code><i>Signal</i></code> be whichever receiver completion-signal
                 was used to complete `r`'s receiver contract ([exec.recv]). Calls
@@ -5911,7 +5839,7 @@ of calling `execution::transfer_when_all(sch, s...)` is undefined.
                 <code><i>stop-callback-fn</i>{<i>stop-src</i>}</code>, where
                 <code><i>stop-src</i></code> refers to the stop source of
                 `sh_state`.
-            
+
             * Then, it checks to see if
                 <code><i>stop-src</i>.stop_requested()</code> is `true`. If so, it
                 calls `execution::set_stopped(out_r')`.
@@ -5935,43 +5863,41 @@ of calling `execution::transfer_when_all(sch, s...)` is undefined.
             completes and it releases its shared ownership of `sh_state`,
             `sh_state` will be destroyed and the results of the operation are
             discarded. -- *end note*]
-        
-    4. Given an expression `e`, let `E` be `decltype((e))`. If `sender<S,
-        E>` is `false`, the type of `tag_invoke(get_sender_traits, s2, e)` shall
-        be equivalent to `dependent_completion_signatures<E>`. Otherwise, let
-        `Vs...` be the set of unique types in the <code><i>type-list</i></code>
-        named by <code>value_types_of_t&lt;S, E, <i>set-value-signature</i>,
-        <i>type-list</i>></code>, and let `Es...` be the set of types in the
-        <code><i>type-list</i></code> named by <code>error_types_of_t&lt;S, E,
-        <i>error-types</i>></code>, where
-        <code><i>set-value-signature</i></code> is the alias template:
+
+    4. Given subexpressions `s2` and `e` where `s2` is a sender returned
+        from `ensure_started` or a copy of such, let `S2` be `decltype((s2))` and let
+        `E` be `decltype((e))`. The type of
+        `tag_invoke(get_completion_signatures, s2, e)` shall be equivalent
+        to:
+
+            <pre highlight="c++">
+            make_completion_signatures&lt;
+              copy_cvref_t&lt;S2, S>,
+              <i>ensure-started-env</i>,
+              completion_signatures&lt;set_error_t(exception_ptr&amp;&amp;)>,
+              <i>set-value-signature</i>,
+              <i>error-types</i>>
+            </pre>
+
+            where <code><i>set-value-signature</i></code> is the alias template:
 
             <pre highlight="c++">
             template &lt;class... Ts>
-              using <i>set-value-signature</i> = set_value_t(decay_t&lt;Ts>&amp;&amp;...);
+              using <i>set-value-signature</i> =
+                completion_signatures&lt;set_value_t(decay_t&lt;Ts>&amp;&amp;...)>;
             </pre>
 
             and <code><i>error-types</i></code> is the alias template:
 
             <pre highlight="c++">
-            template &lt;class... Es>
-              using <i>error-types</i> = <i>type-list</i>&lt;decay_t&lt;Es>&amp;&amp;...>;
+            template &lt;class E>
+              using <i>error-types</i> =
+                completion_signatures&lt;set_error_t(decay_t&lt;E>&amp;&amp;)>;
             </pre>
 
-            Let `Bs...` be the set of unique types in `[Es..., exception_ptr&&]`. If `sender_traits_t<S, E>::sends_stopped` is `true`, then the type of `tag_invoke(get_sender_traits, s2, e)` is a class type equivalent to:
-
-            <pre highlight="c++">
-            completion_signatures&lt;Vs..., set_error_t(Bs)..., set_stopped_t()>
-            </pre>
-
-            Otherwise:
-
-            <pre highlight="c++">
-            completion_signatures&lt;Vs..., set_error_t(Bs)...>
-            </pre>
-
-    If the function selected above does not return a sender that sends xvalue references to values sent by `s`, propagating the other channels, the behavior of
-calling `execution::ensure_started(s)` is undefined.
+    If the function selected above does not return a sender that sends xvalue
+    references to values sent by `s`, propagating the other channels, the
+    behavior of calling `execution::ensure_started(s)` is undefined.
 
 ### Sender consumers <b>[exec.consumers]</b> ### {#spec-execution.senders.consumers}
 
@@ -5992,18 +5918,27 @@ calling `execution::ensure_started(s)` is undefined.
 
     3. Otherwise:
 
-        1. Constructs a receiver `r`:
+        1. Let `R` be the type of a receiver, let `r` be an rvalue of type `R`, and let `cr` be a
+            lvalue reference to `const R` such that:
 
-            1. When `set_value(r, ts...)` is called, it does nothing.
+            1. The expression `set_value(r)` is not potentially throwing and has no effect,
 
-            2. When `set_error(r, e)` is called, it calls `std::terminate`.
+            2. For any subexpression `e`, the expression `set_error(r, e)` is expression-equivalent
+                to `terminate()`,
 
-            3. When `set_stopped(r)` is called, it does nothing.
+            3. The expression `set_stopped(r)` is not potentially throwing and has no effect, and
 
-        2. Calls `execution::connect(s, r)`, resulting in an operation state `op_state`, then calls `execution::start(op_state)`. The lifetime of `op_state` lasts until one of the receiver completion-signals of `r` is called.
+            4. The expression `get_env(cr)` is expression-equivalent to <code><i>empty-env</i>{}</code>.
 
-    If the function selected above does not eagerly start the sender `s` after connecting it with a receiver which ignores the `set_value` and `set_stopped` signals and calls `std::terminate` on the `set_error` signal, the behavior
-of calling `execution::start_detached(s)` is undefined.
+        2. Calls `execution::connect(s, r)`, resulting in an operation state
+            `op_state`, then calls `execution::start(op_state)`. The lifetime of
+            `op_state` lasts until one of the receiver completion-signals of `r`
+            is called.
+
+    If the function selected above does not eagerly start the sender `s` after
+    connecting it with a receiver which ignores the `set_value` and
+    `set_stopped` signals and calls `terminate()` on the `set_error` signal,
+    the behavior of calling `execution::start_detached(s)` is undefined.
 
 #### `this_thread::sync_wait` <b>[exec.sync_wait]</b> #### {#spec-execution.senders.consumers.sync_wait}
 
@@ -6059,7 +5994,7 @@ of calling `execution::start_detached(s)` is undefined.
 
         3. Blocks the current thread until a receiver completion-signal of `r` is called. When it is:
 
-            1. If `execution::set_value(r, ts...)` has been called, returns <code><i>sync-wait-type</i>&lt;S, <i>sync-wait-env</i>>{<i>decayed-tuple</i>&lt;decltype(ts)...>{ts...}}</code>.
+            1. If `execution::set_value(r, ts...)` has been called, returns <code><i>sync-wait-type</i>&lt;S, <i>sync-wait-env</i>>{<i>decayed-tuple</i>&lt;decltype(ts)...>{ts...}}</code>. If that expression exits exceptionally, the exception is propagated to the caller of `sync_wait`.
 
             2. If `execution::set_error(r, e)` has been called, let `E` be the decayed type of `e`. If `E` is `exception_ptr`, calls `std::rethrow_exception(e)`. Otherwise, if the `E` is `error_code`, throws `system_error(e)`. Otherwise, throws `e`.
 
@@ -6127,29 +6062,7 @@ of calling `execution::start_detached(s)` is undefined.
 
 1. `receiver_adaptor` is used to simplify the implementation of one receiver type in terms of another. It defines `tag_invoke` overloads that forward to named members if they exist, and to the adapted receiver otherwise.
 
-2. This section makes use of the following exposition-only entities:
-
-    <pre highlight="c++">
-    template &lt;class Receiver, class... As>
-      concept <i>has-set-value</i> =
-        requires(Receiver&amp;&amp; r, As&amp;&amp;... as) {
-          static_cast&lt;Receiver&amp;&amp;>(r).set_value(static_cast&lt;As&amp;&amp;>(as)...);
-        };
-
-    template &lt;class Receiver, class A>
-      concept <i>has-set-error</i> =
-        requires(Receiver&amp;&amp; r, A&amp;&amp; a) {
-          static_cast&lt;Receiver&amp;&amp;>(r).set_error(static_cast&lt;A&amp;&amp;>(a));
-        };
-
-    template &lt;class Receiver>
-      concept <i>has-set-stopped</i> =
-        requires(Receiver&amp;&amp; r) {
-          static_cast&lt;Receiver&amp;&amp;>(r).set_stopped();
-        };
-    </pre>
-
-3. If `Base` is an alias for the unspecified default template argument, then:
+2. If `Base` is an alias for the unspecified default template argument, then:
 
     - Let <code><i>HAS-BASE</i></code> be `false`, and
     - Let <code><i>GET-BASE</i>(d)</code> be `d.base()`.
@@ -6161,7 +6074,7 @@ of calling `execution::start_detached(s)` is undefined.
 
     Let <code><i>BASE-TYPE</i>(D)</code> be the type of <code><i>GET-BASE</i>(declval&lt;D>())</code>.
 
-4. `receiver_adaptor<Derived, Base>` is equivalent to the following:
+3. `receiver_adaptor<Derived, Base>` is equivalent to the following:
 
     <pre highlight="c++">
     template &lt;
@@ -6180,29 +6093,32 @@ of calling `execution::start_detached(s)` is undefined.
       using set_value = <i>unspecified</i>;
       using set_error = <i>unspecified</i>;
       using set_stopped = <i>unspecified</i>;
+      using get_env = <i>unspecified</i>;
 
       // Member functions
       template &lt;class Self>
         requires <i>HAS-BASE</i>
-      copy_cvref_t&lt;Self, Base>&amp;&amp; base(this Self&amp;&amp; self) noexcept {
-        return static_cast&lt;Self&amp;&amp;>(self).base_;
+      decltype(auto) base(this Self&amp;&amp; self) noexcept {
+        return (std::forward&lt;Self>(self).base_);
       }
 
       // [exec.utils.rcvr_adptr.nonmembers] Non-member functions
-      template &lt;class D = Derived, class... As>
-        friend void tag_invoke(set_value_t, Derived&amp;&amp; self, As&amp;&amp;... as) noexcept(<i>see below</i>);
+      template &lt;class... As>
+        friend void tag_invoke(set_value_t, Derived&amp;&amp; self, As&amp;&amp;... as) noexcept;
 
-      template &lt;class E, class D = Derived>
+      template &lt;class E>
         friend void tag_invoke(set_error_t, Derived&amp;&amp; self, E&amp;&amp; e) noexcept;
 
-      template &lt;class D = Derived>
-        friend void tag_invoke(set_stopped_t, Derived&amp;&amp; self) noexcept;
+      friend void tag_invoke(set_stopped_t, Derived&amp;&amp; self) noexcept;
 
-      template &lt;<i>forwarding-receiver-query</i> Tag, class D = Derived, class... As>
-          requires <i>callable</i>&lt;Tag, <i>BASE-TYPE</i>(const D&amp;), As...>
+      friend decltype(auto) tag_invoke(get_env_t, const Derived&amp; self)
+          noexcept(<i>see below</i>);
+
+      template &lt;<i>forwarding-receiver-query</i> Tag, class... As>
+          requires <i>callable</i>&lt;Tag, <i>BASE-TYPE</i>(const Derived&amp;), As...>
         friend auto tag_invoke(Tag tag, const Derived&amp; self, As&amp;&amp;... as)
-          noexcept(<i>nothrow-callable</i>&lt;Tag, <i>BASE-TYPE</i>(const D&amp;), As...>)
-          -> <i>call-result-t</i>&lt;Tag, <i>BASE-TYPE</i>(const D&), As...> {
+          noexcept(<i>nothrow-callable</i>&lt;Tag, <i>BASE-TYPE</i>(const Derived&amp;), As...>)
+          -> <i>call-result-t</i>&lt;Tag, <i>BASE-TYPE</i>(const Derived&), As...> {
           return std::move(tag)(<i>GET-BASE</i>(self), std::forward&lt;As>(as)...);
         }
 
@@ -6210,13 +6126,16 @@ of calling `execution::start_detached(s)` is undefined.
     };
     </pre>
 
-5. [<i>Note:</i> `receiver_adaptor` provides `tag_invoke` overloads on behalf of
+4. [<i>Note:</i> `receiver_adaptor` provides `tag_invoke` overloads on behalf of
     the derived class `Derived`, which is incomplete when `receiver_adaptor` is
     instantiated.]
 
-6. [<i>Example:</i>
+5. [<i>Example:</i>
      <pre highlight="c++">
-     template &lt;execution::receiver_of&lt;int> R>
+     using _int_completion =
+       execution::completion_signatures&lt;execution::set_value_t(int)>;
+
+     template &lt;execution::receiver_of&lt;_int_completion> R>
        class my_receiver : execution::receiver_adaptor&lt;my_receiver&lt;R>, R> {
          friend execution::receiver_adaptor&lt;my_receiver, R>;
          void set_value() && {
@@ -6231,61 +6150,79 @@ of calling `execution::start_detached(s)` is undefined.
 #### Non-member functions <b>[exec.utils.rcvr_adptr.nonmembers]</b> #### {#spec-execution.snd_rec_utils.receiver_adaptor.nonmembers}
 
     <pre>
-    template &lt;class D = Derived, class... As>
-      friend void tag_invoke(set_value_t, Derived&amp;&amp; self, As&amp;&amp;... as) noexcept(<i>see below</i>);
+    template &lt;class... As>
+      friend void tag_invoke(set_value_t, Derived&amp;&amp; self, As&amp;&amp;... as) noexcept;
     </pre>
 
-    1. <i>Constraints:</i> Either <code><i>has-set-value</i>&lt;D, As...></code> is `true` or <code>requires {typename D::set_value;} && receiver_of&lt;<i>BASE-TYPE</i>(D), As...></code> is `true`.
+    1. Let `SET-VALUE` be the expression `std::move(self).set_value(std::forward<As>(as)...)`.
 
-    2. If <code><i>has-set-value</i>&lt;D, As...></code> is `true`:
+    2. <i>Constraints:</i> Either `SET-VALUE` is a valid expression or `typename Derived::set_value` denotes a type and <code><i>callable</i>&lt;set_value_t, <i>BASE-TYPE</i>(Derived), As...></code> is `true`.
 
-        1. <i>Effects:</i> Equivalent to `static_cast<Derived&&>(self).set_value(static_cast<As&&>(as)...)`
+    3. <i>Mandates:</i> `SET-VALUE`, if that expression is valid, is not potentially throwing.
 
-        2. <i>Remarks:</i> The exception specification is `noexcept(static_cast<Derived&&>(self).set_value(static_cast<As&&>(as)...))`.
+    4. <i>Effects:</i> Equivalent to:
 
-    3. Otherwise:
+        * If `SET-VALUE` is a valid expression, `SET-VALUE`;
 
-        1. <i>Effects:</i> Equivalent to <code>execution::set_value(<i>GET-BASE</i>(static_cast&lt;Derived&amp;&amp;>(self)), static_cast&lt;As&amp;&amp;>(as)...)</code>
-
-        2. <i>Remarks:</i> The exception specification is <code>noexcept(set_value(<i>GET-BASE</i>(static_cast&lt;Derived&amp;&amp;>(self)), static_cast&lt;As&amp;&amp;>(as)...))</code>
+        * Otherwise, <code>execution::set_value(<i>GET-BASE</i>(std::move(self)), std::forward&lt;As>(as)...)</code>.
 
     <pre>
-    template &lt;class E, class D = Derived>
+    template &lt;class E>
       friend void tag_invoke(set_error_t, Derived&amp;&amp; self, E&amp;&amp; e) noexcept;
     </pre>
 
-    1. <i>Constraints:</i> Either <code><i>has-set-error</i>&lt;D, E></code> is `true` or <code>requires {typename D::set_error;} && receiver&lt;<i>BASE-TYPE</i>(D), E></code> is `true`.
+    1. Let `SET-ERROR` be the expression `std::move(self).set_error(std::forward<E>(e))`.
 
-    2. <i>Effects:</i> Equivalent to:
+    2. <i>Constraints:</i> Either `SET-ERROR` is a valid expression or `typename Derived::set_error` denotes a type and <code><i>callable</i>&lt;set_error_t, <i>BASE-TYPE</i>(Derived), E></code> is `true`.
 
-        - `static_cast<Derived&&>(self).set_error(static_cast<E&&>(e))` if <code><i>has-set-error</i>&lt;D, E></code> is `true`,
+    3. <i>Mandates:</i> `SET-ERROR`, if that expression is valid, is not potentially throwing.
 
-            * <i>Mandates:</i> The member function call expression above is not potentially throwing.
+    4. <i>Effects:</i> Equivalent to:
 
-        - Otherwise, <code>execution::set_error(<i>GET-BASE</i>(static_cast&lt;Derived&amp;&amp;>(self)), static_cast&lt;E&amp;&amp;>(e))</code>
+        * If `SET-ERROR` is a valid expression, `SET-ERROR`;
+
+        * Otherwise, <code>execution::set_error(<i>GET-BASE</i>(std::move(self)), std::forward&lt;E>(e))</code>.
 
     <pre>
-    template &lt;class D = Derived>
-      friend void tag_invoke(set_stopped_t, Derived&amp;&amp; self) noexcept;
+    friend void tag_invoke(set_stopped_t, Derived&amp;&amp; self) noexcept;
     </pre>
 
-    1. <i>Constraints:</i> Either <code><i>has-set-stopped</i>&lt;D></code> is `true` or <code>requires {typename D::set_stopped;}</code> is `true`.
+    1. Let `SET-STOPPED` be the expression `std::move(self).set_stopped()`.
+
+    2. <i>Constraints:</i> Either `SET-STOPPED` is a valid expression or `typename Derived::set_stopped` denotes a type and <code><i>callable</i>&lt;set_stopped_t, <i>BASE-TYPE</i>(Derived)></code> is `true`.
+
+    3. <i>Mandates:</i> `SET-STOPPED`, if that expression is valid, is not potentially throwing.
+
+    4. <i>Effects:</i> Equivalent to:
+
+        * If `SET-STOPPED` is a valid expression, `SET-STOPPED`;
+
+        * Otherwise, <code>execution::set_stopped(<i>GET-BASE</i>(std::move(self)))</code>.
+
+    <pre>
+    friend decltype(auto) tag_invoke(get_env_t, const Derived&amp; self)
+      noexcept(<i>see below</i>);
+    </pre>
+
+    1. <i>Constraints:</i> Either `self.get_env()` is a valid expression or `typename Derived::get_env` denotes a type and <code><i>callable</i>&lt;get_env_t, <i>BASE-TYPE</i>(const Derived&amp;)></code> is `true`.
 
     2. <i>Effects:</i> Equivalent to:
 
-        - `static_cast<Derived&&>(self).set_stopped()` if <code><i>has-set-stopped</i>&lt;D></code> is `true`,
+        * If `self.get_env()` is a valid expression, `self.get_env()`;
 
-            * <i>Mandates:</i> The member function call expression above is not potentially throwing.
+        * Otherwise, <code>execution::get_env(<i>GET-BASE</i>(self))</code>.
 
-        - Otherwise, <code>execution::set_stopped(<i>GET-BASE</i>(static_cast&lt;Derived&amp;&amp;>(self)))</code>
+    3. <i>Remarks:</i> The expression in the `noexcept` clause is:
+
+        * If `self.get_env()` is a valid expression, `noexcept(self.get_env())`;
+
+        * Otherwise, <code>noexcept(execution::get_env(<i>GET-BASE</i>(self)))</code>.
 
 ### `execution::completion_signatures` <b>[exec.utils.cmplsigs]</b> ### {#spec-execution.snd_rec_utils.completion_sigs}
 
-1. `completion_signatures` is used to define a type that implements the nested
-    `value_types`, `error_types`, and `sends_stopped` members that describe the
-    ways a sender completes. Its arguments are a flat list of function types
-    that describe the signatures of the receiver's completion-signal operations
-    that the sender invokes.
+1. `completion_signatures` is used to describe the completion signals of a receiver that
+    a sender may invoke. Its template argument list is a list of function types corresponding
+    to the signatures of the receiver's completion signals.
 
 2. [<i>Example:</i>
      <pre highlight="c++">
@@ -6299,15 +6236,13 @@ of calling `execution::start_detached(s)` is undefined.
             execution::set_stopped_t()>;
       };
 
-      // completion_signatures_of_t&lt;my_sender>
-      //      ::value_types&lt;tuple, variant> names the type:
-      //   variant&lt;tuple&lt;>, tuple&lt;int, float>>
-      //
-      // completion_signatures_of_t&lt;my_sender>
-      //      ::error_types&lt;variant> names the type:
-      //   variant&lt;exception_ptr, error_code>
-      //
-      // completion_signatures_of_t&lt;my_sender>::sends_stopped is true
+      // Declares my_sender to be a sender that can complete by calling
+      // one of the following for a receiver expression R:
+      //    execution::set_value(R)
+      //    execution::set_value(R, int{...}, float{...})
+      //    execution::set_error(R, exception_ptr{...})
+      //    execution::set_error(R, error_code{...})
+      //    execution::set_stopped(R)
      </pre>
      -- <i>end example</i>]
 
@@ -6327,23 +6262,70 @@ of calling `execution::start_detached(s)` is undefined.
     2. Otherwise, `Fn` does not satisfy <code><i>completion-signature</i></code>.
 
 4.  <pre highlight="c++">
-    template &lt;<i>completion-signature</i>... Fns> // arguments are not associated entities ([lib.tmpl-heads])
-      struct completion_signatures {
-        template &lt;template &lt;class...> class Tuple, template &lt;class...> class Variant>
-          using value_types = <i>see below</i>;
-
-        template &lt;template &lt;class...> class Variant>
-          using error_types = <i>see below</i>;
-
-        static constexpr bool sends_stopped = <i>see below</i>;
-      };
+    template &lt;<i>completion-signature</i>... Fns>
+      struct completion_signatures {};
     </pre>
 
-    1. Let <code><i>ValueFns</i></code> be a template parameter pack of the function types in `Fns` whose return types are `execution::set_value_t`, and let <code><i>Values<i><sub>n</sub></i></i></code> be a template parameter pack of the function argument types in the <code><i>n</i></code>-th type in <code><i>ValueFns</i></code>. Then, given two variadic templates <code><i>Tuple</i></code> and <code><i>Variant</i></code>, the type <code>completion_signatures&lt;Fns...>::value_types&lt;<i>Tuple</i>, <i>Variant</i>></code> names the type <code><i>Variant</i>&lt;<i>Tuple</i>&lt;<i>Values<i><sub>0</sub></i></i>...>, <i>Tuple</i>&lt;<i>Values<i><sub>1</sub></i></i>...>, ... <i>Tuple</i>&lt;<i>Values<i><sub>m-1</sub></i></i>...>></code>, where <code><i>m</i></code> is the size of the parameter pack <code><i>ValueFns</i></code>.
+5.  <pre highlight="c++">
+    template&lt;class S,
+            class E = no_env,
+            template &lt;class...> class Tuple = <i>decayed-tuple</i>,
+            template &lt;class...> class Variant = <i>variant-or-empty</i>>
+        requires sender&lt;S, E>
+      using value_types_of_t = <i>see below</i>;
+    </pre>
 
-    2. Let <code><i>ErrorFns</i></code> be a template parameter pack of the function types in `Fns` whose return types are `execution::set_error_t`, and let <code><i>Error<i><sub>n</sub></i></i></code> be the function argument type in the <code><i>n</i></code>-th type in <code><i>ErrorFns</i></code>. Then, given a variadic template <code><i>Variant</i></code>, the type <code>completion_signatures&lt;Fns...>::error_types&lt;<i>Variant</i>></code> names the type <code><i>Variant</i>&lt;<i>Error<i><sub>0</sub></i></i>, <i>Error<i><sub>1</sub></i></i>, ... <i>Error<i><sub>m-1</sub></i></i>></code>, where <code><i>m</i></code> is the size of the parameter pack <code><i>ErrorFns</i></code>.
+    * Let `Fns...` be a template parameter pack of the arguments of the
+        `completion_signatures` instantiation named by
+        `completion_signatures_of_t<S, E>`, let <code><i>ValueFns</i></code> be a
+        template parameter pack of the function types in `Fns` whose return types
+        are `execution::set_value_t`, and let
+        <code><i>Values<i><sub>n</sub></i></i></code> be a template parameter
+        pack of the function argument types in the <code><i>n</i></code>-th type
+        in <code><i>ValueFns</i></code>. Then, given two variadic templates
+        <code><i>Tuple</i></code> and <code><i>Variant</i></code>, the type
+        <code>value_types_of_t&lt;S, E, <i>Tuple</i>, <i>Variant</i>></code>
+        names the type
+        <code><i>Variant</i>&lt;<i>Tuple</i>&lt;<i>Values<i><sub>0</sub></i></i>...>,
+        <i>Tuple</i>&lt;<i>Values<i><sub>1</sub></i></i>...>, ...
+        <i>Tuple</i>&lt;<i>Values<i><sub>m-1</sub></i></i>...>></code>, where
+        <code><i>m</i></code> is the size of the parameter pack
+        <code><i>ValueFns</i></code>.
 
-    3. `completion_signatures<Fns...>::sends_stopped` is `true` if at least one of the types in `Fns` is `execution::set_stopped_t()`; otherwise, `false`.
+6.  <pre highlight="c++">
+    template&lt;class S,
+            class E = no_env,
+            template &lt;class...> class Variant = <i>variant-or-empty</i>>
+        requires sender&lt;S, E>
+      using error_types_of_t = <i>see below</i>;
+    </pre>
+
+    * Let `Fns...` be a template parameter pack of the arguments of the
+        `completion_signatures` instantiation named by
+        `completion_signatures_of_t<S, E>`, let <code><i>ErrorFns</i></code> be a
+        template parameter pack of the function types in `Fns` whose return types
+        are `execution::set_error_t`, and let
+        <code><i>Error<i><sub>n</sub></i></i></code> be the function argument
+        type in the <code><i>n</i></code>-th type in
+        <code><i>ErrorFns</i></code>. Then, given a variadic template
+        <code><i>Variant</i></code>, the type <code>error_types_of_t&lt;S, E,
+        <i>Variant</i>></code> names the type
+        <code><i>Variant</i>&lt;<i>Error<i><sub>0</sub></i></i>,
+        <i>Error<i><sub>1</sub></i></i>, ...
+        <i>Error<i><sub>m-1</sub></i></i>></code>, where <code><i>m</i></code> is
+        the size of the parameter pack <code><i>ErrorFns</i></code>.
+
+7.  <pre highlight="c++">
+    template&lt;class S, class E = no_env>
+        requires sender&lt;S, E>
+      inline constexpr bool sends_stopped = <i>see below</i>;
+    </pre>
+
+    * Let `Fns...` be a template parameter pack of the arguments of the
+        `completion_signatures` instantiation named by
+        `completion_signatures_of_t<S, E>`. `sends_stopped<S, E>` is `true` if at
+        least one of the types in `Fns` is `execution::set_stopped_t()`;
+        otherwise, `false`.
 
 ### `execution::make_completion_signatures` <b>[exec.utils.mkcmplsigs]</b> ### {#spec-execution.snd_rec_utils.make_completion_sigs}
 
@@ -6360,7 +6342,9 @@ of calling `execution::start_detached(s)` is undefined.
     // exception_ptr error completion if its not already there, and leaving the
     // other signals alone.
     template &lt;class... Args>
-      using my_set_value_t = execution::set_value_t(add_lvalue_reference_t&lt;Args>...);
+      using my_set_value_t =
+        execution::completion_signatures&lt;
+          execution::set_value_t(add_lvalue_reference_t&lt;Args>...)>;
 
     using my_completion_signals =
       execution::make_completion_signatures&lt;
@@ -6374,50 +6358,66 @@ of calling `execution::start_detached(s)` is undefined.
 
     <pre highlight="c++">
     template &lt;class... As>
-      using <i>default-set-value</i> = execution::set_value_t(As...);
+      using <i>default-set-value</i> =
+        execution::completion_signatures&lt;execution::set_value_t(As...)>;
 
     template &lt;class Err>
-      using <i>default-set-error</i> = execution::set_error_t(Err);
+      using <i>default-set-error</i> =
+        execution::completion_signatures&lt;execution::set_error_t(Err)>;
     </pre>
 
 4.  <pre highlight="c++">
     template &lt;
       execution::sender Sndr,
       class Env = execution::no_env,
-      class AddlSigs = execution::completion_signatures&lt;>,
+      <i>valid-completion-signatures&lt;Env></i> AddlSigs = execution::completion_signatures&lt;>,
       template &lt;class...> class SetValue = <i>default-set-value</i>,
       template &lt;class> class SetError = <i>default-set-error</i>,
-      bool SendsStopped = execution::completion_signatures_of_t&lt;Sndr, Env>::sends_stopped>
+      <i>valid-completion-signatures&lt;Env></i> SetStopped =
+          execution::completion_signatures&lt;set_stopped_t()>>
         requires sender&lt;Sndr, Env>
-    using make_completion_signatures = execution::completion_signatures<<i>/* see below */</i>>;
+    using make_completion_signatures =
+      execution::completion_signatures&lt;<i>/* see below */</i>>;
     </pre>
 
-    1.  `AddlSigs` shall name an instantiation of the
-        `execution::completion_signatures` class template.
-    2.  `SetValue` shall name an alias template such that for any template
-        parameter pack `As...`, `SetValue<As...>` is either ill-formed, `void` or an
-        alias for a function type whose return type is `execution::set_value_t`.
-    3.  `SetError` shall name an alias template such that for any type `Err`,
-        `SetError<Err>` is either ill-formed, `void` or an alias for a function
-        type whose return type is `execution::set_error_t`.
-    4.  Let `Vs...` be a pack of the non-`void` types in the <code><i>type-list</i></code> named
-        by <code>value_types_of_t&lt;Sndr, Env, SetValue, <i>type-list</i>></code>.
-    5.  Let `Es...` be a pack of the non-`void` types in the
-        <code><i>type-list</i></code> named by <code>error_types_of_t&lt;Sndr, Env,
-        <i>error-list</i>></code>, where <code><i>error-list</i></code> is an
-        alias template such that <code><i>error-list</i>&lt;Ts...></code> names
-        <code><i>type-list</i>&lt;SetError&lt;Ts>...></code>.
-    6.  Let `Ss...` be an empty pack if `SendsStopped` is `false`; otherwise, a
-        pack containing the single type `execution::set_stopped_t()`.
-    7.  Let `MoreSigs...` be a pack of the template arguments of the
-        `execution::completion_signatures` instantiation named by `AddlSigs`.
-    8.  If any of the above types are ill-formed, then
-        `make_completion_signatures<Sndr, Env, AddlSigs, SetValue, SetDone,
-        SendsStopped>` is an alias for `dependent_completion_signatures<Env>`.
-    9.  Otherwise, `make_completion_signatures<Sndr, Env, AddlSigs, SetValue,
-        SetDone, SendsStopped>` names the type `completion_signatures<Sigs...>`
-        where `Sigs...` is the unique set of types in `[Vs..., Es..., Ss...,
-        MoreSigs...]`.
+    *  `SetValue` shall name an alias template such that for any template
+        parameter pack `As...`, the type `SetValue<As...>` is either ill-formed
+        or else <code><i>valid-completion-signatures</i>&lt;SetValue&lt;As...>, E></code>
+        is satisfied.
+    *  `SetError` shall name an alias template such that for any type `Err`,
+        `SetError<Err>` is either ill-formed or else
+        <code><i>valid-completion-signatures</i>&lt;SetError&lt;Err>, E></code>
+        is satisfied.
+
+    Then:
+
+        * Let `Vs...` be a pack of the types in the <code><i>type-list</i></code> named
+            by <code>value_types_of_t&lt;Sndr, Env, SetValue, <i>type-list</i>></code>.
+
+        *  Let `Es...` be a pack of the types in the
+            <code><i>type-list</i></code> named by <code>error_types_of_t&lt;Sndr, Env,
+            <i>error-list</i>></code>, where <code><i>error-list</i></code> is an
+            alias template such that <code><i>error-list</i>&lt;Ts...></code> names
+            <code><i>type-list</i>&lt;SetError&lt;Ts>...></code>.
+
+        * Let `Ss` name the type `completion_signatures<>` if `sends_stopped<Sndr,
+            Env>` is `false`; otherwise, `SetStopped`.
+
+        Then:
+
+        1. If any of the above types are ill-formed, then
+            `make_completion_signatures<Sndr, Env, AddlSigs, SetValue, SetError,
+            SetStopped>` is ill-formed,
+
+        2. Otherwise, if any type in `[AddlSigs, Vs..., Es..., Ss]` is not an
+            instantiation of `completion_signatures`, then
+            `make_completion_signatures<Sndr, Env, AddlSigs, SetValue, SetError,
+            SetStopped>` is an alias for `dependent_completion_signatures<no_env>`,
+
+        3. Otherwise, `make_completion_signatures<Sndr, Env, AddlSigs, SetValue,
+            SetError, SetStopped>` names the type `completion_signatures<Sigs...>`
+            where `Sigs...` is the unique set of types in all the template arguments
+            of all the `completion_signatures` instantiations in `[AddlSigs, Vs..., Es..., Ss]`.
 
 ## Execution contexts <b>[exec.ctx]</b> ## {#spec-execution.contexts}
 
@@ -6658,19 +6658,37 @@ of calling `execution::start_detached(s)` is undefined.
             };
             </pre>
 
-            Let `r` be an rvalue expression of type <code><i>awaitable-receiver</i></code>, let `cr` be a `const` lvalue that refers to `r`, let `v` be an expression of type `result_t`, and let `err` be an arbitrary expression of type `Err`. Then:
+            Let `r` be an rvalue expression of type <code><i>awaitable-receiver</i></code>, let `cr` be a `const` lvalue that refers to `r`, let `vs...` be an arbitrary function parameter pack of types `Vs...`, and let `err` be an arbitrary expression of type `Err`. Then:
 
-              1. If `value_t` is `void`, then `execution::set_value(r)` is expression-equivalent to  `(r.result_ptr_->emplace<1>(), r.continuation_.resume())`; otherwise, `execution::set_value(r, v)` is expression-equivalent to `(r.result_ptr_->emplace<1>(v), r.continuation_.resume())`.
+              1. If `constructible_from<result_t, Vs...>` is satisfied, the expression `execution::set_value(r, vs...)` is not potentially throwing and is equivalent to:
 
-              2. `execution::set_error(r, e)` is expression-equivalent to <code>(r.result_ptr_->emplace&lt;2>(<i>AS_EXCEPT_PTR</i>(err)), r.continuation_.resume())</code>, where <code><i>AS_EXCEPT_PTR</i>(err)</code> is:
+                  <pre highlight="c++">
+                  try {
+                    r.result_ptr_->emplace&lt;1>(vs...);
+                  } catch(...) {
+                    r.result_ptr_->emplace&lt;2>(current_exception());
+                  }
+                  r.continuation_.resume();
+                  </pre>
 
-                1. `err` if `decay_t<Err>` names the same type as `exception_ptr`,
+                  Otherwise, `execution::set_value(r, vs...)` is ill-formed.
 
-                2. Otherwise, `make_exception_ptr(system_error(err))` if `decay_t<Err>` names the same type as `error_code`,
+              2. The expression `execution::set_error(r, err)` is not potentially throwing and is equivalent to:
 
-                3. Otherwise, `make_exception_ptr(err)`.
+                  <pre highlight="c++">
+                  r.result_ptr_->emplace&lt;2>(<i>AS_EXCEPT_PTR</i>(err));
+                  r.continuation_.resume();
+                  </pre>
 
-              3. `execution::set_stopped(r)` is expression-equivalent to
+                  where <code><i>AS_EXCEPT_PTR</i>(err)</code> is:
+
+                  1. `err` if `decay_t<Err>` names the same type as `exception_ptr`,
+
+                  2. Otherwise, `make_exception_ptr(system_error(err))` if `decay_t<Err>` names the same type as `error_code`,
+
+                  3. Otherwise, `make_exception_ptr(err)`.
+
+              3. The expression `execution::set_stopped(r)` is not potentially throwing and is equivalent to
                 `static_cast<coroutine_handle<>>(r.continuation_.promise().unhandled_stopped()).resume()`.
 
               4. `tag_invoke(tag, cr, as...)` is expression-equivalent to `tag(as_const(cr.continuation_.promise()), as...)` for any expression `tag` whose type satisfies <code><i>forwarding-receiver-query</i></code> and for any set of arguments `as...`.
