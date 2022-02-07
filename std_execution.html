@@ -2194,12 +2194,14 @@ c-[il] { color: #000000 } /* Literal.Number.Integer.Long */
   <div class="head">
    <p data-fill-with="logo"></p>
    <h1 class="p-name no-ref" id="title">D2300R5<br><code class="highlight"><c- n>std</c-><c- o>::</c-><c- n>execution</c-></code></h1>
-   <h2 class="no-num no-toc no-ref heading settled" id="profile-and-date"><span class="content">Draft Proposal, <time class="dt-updated" datetime="2022-02-02">2022-02-02</time></span></h2>
+   <h2 class="no-num no-toc no-ref heading settled" id="profile-and-date"><span class="content">Draft Proposal, <time class="dt-updated" datetime="2022-02-07">2022-02-07</time></span></h2>
    <div data-fill-with="spec-metadata">
     <dl>
      <dt class="editor">Authors:
      <dd class="editor p-author h-card vcard"><a class="p-name fn u-email email" href="mailto:griwes@griwes.info">Michał Dominiak</a>
+     <dd class="editor p-author h-card vcard"><a class="p-name fn u-email email" href="mailto:evtushenko.georgy@gmail.com">Georgy Evtushenko</a>
      <dd class="editor p-author h-card vcard"><a class="p-name fn u-email email" href="mailto:lewissbaker@gmail.com">Lewis Baker</a>
+     <dd class="editor p-author h-card vcard"><a class="p-name fn u-email email" href="mailto:lucteo@lucteo.ro">Lucian Radu Teodorescu</a>
      <dd class="editor p-author h-card vcard"><a class="p-name fn u-email email" href="mailto:xrikcus@gmail.com">Lee Howes</a>
      <dd class="editor p-author h-card vcard"><a class="p-name fn u-email email" href="mailto:kirk.shoop@gmail.com">Kirk Shoop</a>
      <dd class="editor p-author h-card vcard"><a class="p-name fn u-email email" href="mailto:mgarland@nvidia.com">Michael Garland</a>
@@ -2975,15 +2977,8 @@ of a cancellable <code class="highlight"><c- n>async_recv</c-><c- p>()</c-></cod
   <c- n>friend</c-> <c- n>exec</c-><c- o>::</c-><c- n>receiver_adaptor</c-><c- o>&lt;</c-><c- n>_then_receiver</c-><c- p>,</c-> <c- n>R</c-><c- o>></c-><c- p>;</c->
   <c- n>F</c-> <c- n>f_</c-><c- p>;</c->
 
-  <c- n>template</c-> <c- o>&lt;</c-><c- n>class</c-><c- p>...</c-> <c- n>As</c-><c- o>></c->
-  <c- n>using</c-> <c- n>_completions</c-> <c- o>=</c->
-    <c- n>exex</c-><c- o>::</c-><c- n>completion_signatures</c-><c- o>&lt;</c->
-      <c- n>exec</c-><c- o>::</c-><c- n>set_value_t</c-><c- p>(</c-><c- n>std</c-><c- o>::</c-><c- n>invoke_result_t</c-><c- o>&lt;</c-><c- n>F</c-><c- p>,</c-> <c- n>As</c-><c- p>...</c-><c- o>></c-><c- p>),</c->
-      <c- n>exec</c-><c- o>::</c-><c- n>set_error_t</c-><c- p>(</c-><c- n>std</c-><c- o>::</c-><c- n>exception_ptr</c-><c- p>)</c-><c- o>></c-><c- p>;</c->
-
   <c- c1>// Customize set_value by invoking the callable and passing the result to the inner receiver</c->
   <c- n>template</c-><c- o>&lt;</c-><c- n>class</c-><c- p>...</c-> <c- n>As</c-><c- o>></c->
-    <c- n>requires</c-> <c- n>exec</c-><c- o>::</c-><c- n>receiver_of</c-><c- o>&lt;</c-><c- n>R</c-><c- p>,</c-> <c- n>_completions</c-><c- o>&lt;</c-><c- n>As</c-><c- p>...</c-><c- o>>></c->
   <c- b>void</c-> <c- n>set_value</c-><c- p>(</c-><c- n>As</c-><c- o>&amp;&amp;</c-><c- p>...</c-> <c- n>as</c-><c- p>)</c-> <c- o>&amp;&amp;</c-> <c- n>noexcept</c-> <c- n>try</c-> <c- p>{</c->
     <c- n>exec</c-><c- o>::</c-><c- n>set_value</c-><c- p>(</c-><c- n>std</c-><c- o>::</c-><c- n>move</c-><c- p>(</c-><c- o>*</c-><c- n>this</c-><c- p>).</c-><c- n>base</c-><c- p>(),</c-> <c- n>std</c-><c- o>::</c-><c- n>invoke</c-><c- p>((</c-><c- n>F</c-><c- o>&amp;&amp;</c-><c- p>)</c-> <c- n>f_</c-><c- p>,</c-> <c- p>(</c-><c- n>As</c-><c- o>&amp;&amp;</c-><c- p>)</c-> <c- n>as</c-><c- p>...));</c->
   <c- p>}</c-> <c- n>catch</c-><c- p>(...)</c-> <c- p>{</c->
@@ -3001,24 +2996,24 @@ of a cancellable <code class="highlight"><c- n>async_recv</c-><c- p>()</c-></cod
   <c- n>S</c-> <c- n>s_</c-><c- p>;</c->
   <c- n>F</c-> <c- n>f_</c-><c- p>;</c->
 
+  <c- n>template</c-> <c- o>&lt;</c-><c- n>class</c-><c- p>...</c-> <c- n>Args</c-><c- o>></c->
+    <c- n>using</c-> <c- n>_set_value_t</c-> <c- o>=</c-> <c- n>exec</c-><c- o>::</c-><c- n>completion_signatures</c-><c- o>&lt;</c->
+      <c- n>exec</c-><c- o>::</c-><c- n>set_value_t</c-><c- p>(</c-><c- n>std</c-><c- o>::</c-><c- n>invoke_result_t</c-><c- o>&lt;</c-><c- n>F</c-><c- p>,</c-> <c- n>Args</c-><c- p>...</c-><c- o>></c-><c- p>)</c-><c- o>></c-><c- p>;</c->
+
+  <c- c1>// Compute the completion signatures</c->
+  <c- n>template</c-><c- o>&lt;</c-><c- n>class</c-> <c- n>Env</c-><c- o>></c->
+  <c- n>friend</c-> <c- k>auto</c-> <c- n>tag_invoke</c-><c- p>(</c-><c- n>exec</c-><c- o>::</c-><c- n>get_completion_signatures_t</c-><c- p>,</c-> <c- n>_then_sender</c-><c- o>&amp;&amp;</c-><c- p>,</c-> <c- n>Env</c-><c- p>)</c->
+    <c- o>-></c-> <c- n>exec</c-><c- o>::</c-><c- n>make_completion_signatures</c-><c- o>&lt;</c-><c- n>S</c-><c- p>,</c-> <c- n>Env</c-><c- p>,</c->
+        <c- n>exec</c-><c- o>::</c-><c- n>completion_signatures</c-><c- o>&lt;</c-><c- n>exec</c-><c- o>::</c-><c- n>set_error_t</c-><c- p>(</c-><c- n>std</c-><c- o>::</c-><c- n>exception_ptr</c-><c- p>)</c-><c- o>></c-><c- p>,</c->
+        <c- n>_set_value_t</c-><c- o>></c-><c- p>;</c->
+
   <c- c1>// Connect:</c->
-  <c- n>template</c-><c- o>&lt;</c-><c- n>class</c-> <c- n>R</c-><c- o>></c->
-    <c- n>requires</c-> <c- n>exec</c-><c- o>::</c-><c- n>sender_to</c-><c- o>&lt;</c-><c- n>S</c-><c- p>,</c-> <c- n>_then_receiver</c-><c- o>&lt;</c-><c- n>R</c-><c- p>,</c-> <c- n>F</c-><c- o>>></c->
+  <c- n>template</c-><c- o>&lt;</c-><c- n>exec</c-><c- o>::</c-><c- n>receiver</c-> <c- n>R</c-><c- o>></c->
   <c- n>friend</c-> <c- k>auto</c-> <c- n>tag_invoke</c-><c- p>(</c-><c- n>exec</c-><c- o>::</c-><c- n>connect_t</c-><c- p>,</c-> <c- n>_then_sender</c-><c- o>&amp;&amp;</c-> <c- n>self</c-><c- p>,</c-> <c- n>R</c-> <c- n>r</c-><c- p>)</c->
     <c- o>-></c-> <c- n>exec</c-><c- o>::</c-><c- n>connect_result_t</c-><c- o>&lt;</c-><c- n>S</c-><c- p>,</c-> <c- n>_then_receiver</c-><c- o>&lt;</c-><c- n>R</c-><c- p>,</c-> <c- n>F</c-><c- o>>></c-> <c- p>{</c->
       <c- k>return</c-> <c- n>exec</c-><c- o>::</c-><c- n>connect</c-><c- p>(</c->
         <c- p>(</c-><c- n>S</c-><c- o>&amp;&amp;</c-><c- p>)</c-> <c- n>self</c-><c- p>.</c-><c- n>s_</c-><c- p>,</c-> <c- n>_then_receiver</c-><c- o>&lt;</c-><c- n>R</c-><c- p>,</c-> <c- n>F</c-><c- o>></c-><c- p>{(</c-><c- n>R</c-><c- o>&amp;&amp;</c-><c- p>)</c-> <c- n>r</c-><c- p>,</c-> <c- p>(</c-><c- n>F</c-><c- o>&amp;&amp;</c-><c- p>)</c-> <c- n>self</c-><c- p>.</c-><c- n>f_</c-><c- p>});</c->
   <c- p>}</c->
-
-  <c- c1>// Compute the completion signatures</c->
-  <c- n>template</c-> <c- o>&lt;</c-><c- n>class</c-><c- p>...</c-><c- n>Args</c-><c- o>></c->
-    <c- n>using</c-> <c- n>_set_value</c-> <c- o>=</c-> <c- n>exec</c-><c- o>::</c-><c- n>set_value_t</c-><c- p>(</c-><c- n>std</c-><c- o>::</c-><c- n>invoke_result_t</c-><c- o>&lt;</c-><c- n>F</c-><c- p>,</c-> <c- n>Args</c-><c- p>...</c-><c- o>></c-><c- p>);</c->
-
-  <c- n>template</c-><c- o>&lt;</c-><c- n>class</c-> <c- n>Env</c-><c- o>></c->
-  <c- n>friend</c-> <c- k>auto</c-> <c- n>tag_invoke</c-><c- p>(</c-><c- n>exec</c-><c- o>::</c-><c- n>get_completion_signatures_t</c-><c- p>,</c-> <c- n>_then_sender</c-><c- o>&amp;&amp;</c-><c- p>,</c-> <c- n>Env</c-><c- p>)</c->
-    <c- o>-></c-> <c- n>exec</c-><c- o>::</c-><c- n>make_completion_signatures</c-><c- o>&lt;</c-><c- n>S</c-><c- p>,</c-> <c- n>Env</c-><c- p>,</c->
-        <c- n>exec</c-><c- o>::</c-><c- n>completion_signatures</c-><c- o>&lt;</c-><c- n>exec</c-><c- o>::</c-><c- n>set_error_t</c-><c- p>(</c-><c- n>std</c-><c- o>::</c-><c- n>exception_ptr</c-><c- p>)</c-><c- o>></c-><c- p>,</c->
-        <c- n>_set_value</c-><c- o>></c-><c- p>;</c->
 <c- p>};</c->
 
 <c- n>template</c-><c- o>&lt;</c-><c- n>exec</c-><c- o>::</c-><c- n>sender</c-> <c- n>S</c-><c- p>,</c-> <c- n>class</c-> <c- n>F</c-><c- o>></c->
@@ -3119,22 +3114,23 @@ shown above with <code class="highlight"><c- n>_then_receiver</c-><c- o>::</c-><
   <c- n>S</c-> <c- n>s_</c-><c- p>;</c->
   <c- n>explicit</c-> <c- nf>_retry_sender</c-><c- p>(</c-><c- n>S</c-> <c- n>s</c-><c- p>)</c-> <c- o>:</c-> <c- n>s_</c-><c- p>((</c-><c- n>S</c-><c- o>&amp;&amp;</c-><c- p>)</c-> <c- n>s</c-><c- p>)</c-> <c- p>{}</c->
 
-  <c- n>template</c-><c- o>&lt;</c-><c- n>class</c-> <c- n>R</c-><c- o>></c->
-    <c- n>requires</c-> <c- n>exec</c-><c- o>::</c-><c- n>sender_to</c-><c- o>&lt;</c-><c- n>S</c-><c- o>&amp;</c-><c- p>,</c-> <c- n>R</c-><c- o>></c->
-  <c- n>friend</c-> <c- n>_op</c-><c- o>&lt;</c-><c- n>S</c-><c- p>,</c-> <c- n>R</c-><c- o>></c-> <c- n>tag_invoke</c-><c- p>(</c-><c- n>exec</c-><c- o>::</c-><c- n>connect_t</c-><c- p>,</c-> <c- n>_retry_sender</c-><c- o>&amp;&amp;</c-> <c- n>self</c-><c- p>,</c-> <c- n>R</c-> <c- n>r</c-><c- p>)</c-> <c- p>{</c->
-    <c- k>return</c-> <c- p>{(</c-><c- n>S</c-><c- o>&amp;&amp;</c-><c- p>)</c-> <c- n>self</c-><c- p>.</c-><c- n>s_</c-><c- p>,</c-> <c- p>(</c-><c- n>R</c-><c- o>&amp;&amp;</c-><c- p>)</c-> <c- n>r</c-><c- p>};</c->
-  <c- p>}</c->
-
-  <c- n>template</c-> <c- o>&lt;</c-><c- n>class</c-><c- o>></c-> <c- n>using</c-> <c- n>_void</c-> <c- o>=</c-> <c- b>void</c-><c- p>;</c->
-  <c- n>template</c-> <c- o>&lt;</c-><c- n>class</c-><c- p>...</c-> <c- n>Ts</c-><c- o>></c-> <c- n>using</c-> <c- n>_value</c-> <c- o>=</c-> <c- n>exec</c-><c- o>::</c-><c- n>set_value_t</c-><c- p>(</c-><c- n>Ts</c-><c- p>...);</c->
+  <c- n>template</c-> <c- o>&lt;</c-><c- n>class</c-><c- p>...</c-> <c- n>Ts</c-><c- o>></c->
+    <c- n>using</c-> <c- n>_value_t</c-> <c- o>=</c->
+      <c- n>exec</c-><c- o>::</c-><c- n>completion_signatures</c-><c- o>&lt;</c-><c- n>exec</c-><c- o>::</c-><c- n>set_value_t</c-><c- p>(</c-><c- n>Ts</c-><c- p>...)</c-><c- o>></c-><c- p>;</c->
+  <c- n>template</c-> <c- o>&lt;</c-><c- n>class</c-><c- o>></c->
+    <c- n>using</c-> <c- n>_error_t</c-> <c- o>=</c-> <c- n>exec</c-><c- o>::</c-><c- n>completion_signatures</c-><c- o>&lt;></c-><c- p>;</c->
 
   <c- c1>// Declare the signatures with which this sender can complete</c->
   <c- n>template</c-> <c- o>&lt;</c-><c- n>class</c-> <c- n>Env</c-><c- o>></c->
   <c- n>friend</c-> <c- k>auto</c-> <c- n>tag_invoke</c-><c- p>(</c-><c- n>exec</c-><c- o>::</c-><c- n>get_completion_signatures_t</c-><c- p>,</c-> <c- k>const</c-> <c- n>_retry_sender</c-><c- o>&amp;</c-><c- p>,</c-> <c- n>Env</c-><c- p>)</c->
-    <c- o>-></c-> <c- n>exec</c-><c- o>::</c-><c- n>make_completion_signatures</c-><c- o>&lt;</c->
-        <c- n>S</c-><c- o>&amp;</c-><c- p>,</c-> <c- n>Env</c-><c- p>,</c->
+    <c- o>-></c-> <c- n>exec</c-><c- o>::</c-><c- n>make_completion_signatures</c-><c- o>&lt;</c-><c- n>S</c-><c- o>&amp;</c-><c- p>,</c-> <c- n>Env</c-><c- p>,</c->
         <c- n>exec</c-><c- o>::</c-><c- n>completion_signatures</c-><c- o>&lt;</c-><c- n>exec</c-><c- o>::</c-><c- n>set_error_t</c-><c- p>(</c-><c- n>std</c-><c- o>::</c-><c- n>exception_ptr</c-><c- p>)</c-><c- o>></c-><c- p>,</c->
-        <c- n>_value</c-><c- p>,</c-> <c- n>_void</c-><c- o>></c-><c- p>;</c->
+        <c- n>_value_t</c-><c- p>,</c-> <c- n>_error_t</c-><c- o>></c-><c- p>;</c->
+
+  <c- n>template</c-><c- o>&lt;</c-><c- n>exec</c-><c- o>::</c-><c- n>receiver</c-> <c- n>R</c-><c- o>></c->
+  <c- n>friend</c-> <c- n>_op</c-><c- o>&lt;</c-><c- n>S</c-><c- p>,</c-> <c- n>R</c-><c- o>></c-> <c- n>tag_invoke</c-><c- p>(</c-><c- n>exec</c-><c- o>::</c-><c- n>connect_t</c-><c- p>,</c-> <c- n>_retry_sender</c-><c- o>&amp;&amp;</c-> <c- n>self</c-><c- p>,</c-> <c- n>R</c-> <c- n>r</c-><c- p>)</c-> <c- p>{</c->
+    <c- k>return</c-> <c- p>{(</c-><c- n>S</c-><c- o>&amp;&amp;</c-><c- p>)</c-> <c- n>self</c-><c- p>.</c-><c- n>s_</c-><c- p>,</c-> <c- p>(</c-><c- n>R</c-><c- o>&amp;&amp;</c-><c- p>)</c-> <c- n>r</c-><c- p>};</c->
+  <c- p>}</c->
 <c- p>};</c->
 
 <c- n>template</c-><c- o>&lt;</c-><c- n>exec</c-><c- o>::</c-><c- n>sender</c-> <c- n>S</c-><c- o>></c->
@@ -6217,8 +6213,8 @@ are not potentially-throwing and are core constant expressions if <code class="h
     <c- n>copy_constructible</c-><c- o>&lt;</c-><c- n>remove_cvref_t</c-><c- o>&lt;</c-><c- n>S</c-><c- o>>></c-> <c- o>&amp;&amp;</c->
     <c- n>equality_comparable</c-><c- o>&lt;</c-><c- n>remove_cvref_t</c-><c- o>&lt;</c-><c- n>S</c-><c- o>>></c-> <c- o>&amp;&amp;</c->
     <c- k>requires</c-><c- p>(</c-><c- n>S</c-><c- o>&amp;&amp;</c-> <c- n>s</c-><c- p>,</c-> <c- k>const</c-> <c- n>get_completion_scheduler_t</c-><c- o>&lt;</c-><c- n>set_value_t</c-><c- o>></c-> <c- n>tag</c-><c- p>)</c-> <c- p>{</c->
-      <c- p>{</c-> <c- n>execution</c-><c- o>::</c-><c- n>schedule</c-><c- p>((</c-><c- n>S</c-><c- o>&amp;&amp;</c-><c- p>)</c-> <c- n>s</c-><c- p>)</c-> <c- p>}</c-> <c- o>-></c-> <c- n>sender</c-><c- p>;</c->
-      <c- p>{</c-> <c- n>tag_invoke</c-><c- p>(</c-><c- n>tag</c-><c- p>,</c-> <c- n>execution</c-><c- o>::</c-><c- n>schedule</c-><c- p>((</c-><c- n>S</c-><c- o>&amp;&amp;</c-><c- p>)</c-> <c- n>s</c-><c- p>))</c-> <c- p>}</c-> <c- o>-></c-> <c- n>same_as</c-><c- o>&lt;</c-><c- n>remove_cvref_t</c-><c- o>&lt;</c-><c- n>S</c-><c- o>>></c-><c- p>;</c->
+      <c- p>{</c-> <c- n>execution</c-><c- o>::</c-><c- n>schedule</c-><c- p>(</c-><c- n>std</c-><c- o>::</c-><c- n>forward</c-><c- o>&lt;</c-><c- n>S</c-><c- o>></c-><c- p>(</c-><c- n>s</c-><c- p>))</c-> <c- p>}</c-> <c- o>-></c-> <c- n>sender</c-><c- p>;</c->
+      <c- p>{</c-> <c- n>tag_invoke</c-><c- p>(</c-><c- n>tag</c-><c- p>,</c-> <c- n>execution</c-><c- o>::</c-><c- n>schedule</c-><c- p>(</c-><c- n>std</c-><c- o>::</c-><c- n>forward</c-><c- o>&lt;</c-><c- n>S</c-><c- o>></c-><c- p>(</c-><c- n>s</c-><c- p>)))</c-> <c- p>}</c-> <c- o>-></c-> <c- n>same_as</c-><c- o>&lt;</c-><c- n>remove_cvref_t</c-><c- o>&lt;</c-><c- n>S</c-><c- o>>></c-><c- p>;</c->
     <c- p>};</c->
 </pre>
     <li data-md>
@@ -6719,18 +6715,18 @@ unqualified type of the second argument.</p>
        <p>where <code class="highlight"><i><c- n>connect</c-><c- o>-</c-><c- n>awaitable</c-><c- o>-</c-><c- n>promise</c-></i></code> is the promise type of <code class="highlight"><i><c- n>connect</c-><c- o>-</c-><c- n>awaitable</c-></i></code>, and where <code class="highlight"><i><c- n>connect</c-><c- o>-</c-><c- n>awaitable</c-></i></code> suspends at the <i>initial suspends point</i> ([dcl.fct.def.coroutine]), and:</p>
        <ol>
         <li data-md>
-         <p><i>set-value-expr</i> first evaluates <code class="highlight"><c- k>co_await</c-> <c- p>(</c-><c- n>S</c-><c- o>&amp;&amp;</c-><c- p>)</c-> <c- n>s</c-></code>, then suspends the coroutine and evaluates <code class="highlight"><c- n>execution</c-><c- o>::</c-><c- n>set_value</c-><c- p>((</c-><c- n>R</c-><c- o>&amp;&amp;</c-><c- p>)</c-> <c- n>r</c-><c- p>)</c-></code> if <code class="highlight"><i><c- n>await</c-><c- o>-</c-><c- n>result</c-><c- o>-</c-><c- n>type</c-></i><c- o>&lt;</c-><c- n>S</c-><c- p>,</c-> <i><c- n>connect</c-><c- o>-</c-><c- n>awaitable</c-><c- o>-</c-><c- n>promise</c-></i><c- o>></c-></code> is <code class="highlight"><i><c- n>cv</c-></i> <c- b>void</c-></code>; otherwise, it evaluates <code class="highlight"><c- k>auto</c-><c- o>&amp;&amp;</c-> <c- n>res</c-> <c- o>=</c-> <c- k>co_await</c-> <c- p>(</c-><c- n>S</c-><c- o>&amp;&amp;</c-><c- p>)</c-> <c- n>s</c-></code>, then suspends the coroutine and evaluates <code class="highlight"><c- n>execution</c-><c- o>::</c-><c- n>set_value</c-><c- p>((</c-><c- n>R</c-><c- o>&amp;&amp;</c-><c- p>)</c-> <c- n>r</c-><c- p>,</c-> <c- p>(</c-><c- k>decltype</c-><c- p>(</c-><c- n>res</c-><c- p>))</c-> <c- n>res</c-><c- p>)</c-></code>.</p>
+         <p><i>set-value-expr</i> first evaluates <code class="highlight"><c- k>co_await</c-> <c- n>std</c-><c- o>::</c-><c- n>move</c-><c- p>(</c-><c- n>s</c-><c- p>)</c-></code>, then suspends the coroutine and evaluates <code class="highlight"><c- n>execution</c-><c- o>::</c-><c- n>set_value</c-><c- p>(</c-><c- n>std</c-><c- o>::</c-><c- n>move</c-><c- p>(</c-><c- n>r</c-><c- p>))</c-></code> if <code class="highlight"><i><c- n>await</c-><c- o>-</c-><c- n>result</c-><c- o>-</c-><c- n>type</c-></i><c- o>&lt;</c-><c- n>S</c-><c- p>,</c-> <i><c- n>connect</c-><c- o>-</c-><c- n>awaitable</c-><c- o>-</c-><c- n>promise</c-></i><c- o>></c-></code> is <code class="highlight"><i><c- n>cv</c-></i> <c- b>void</c-></code>; otherwise, it evaluates <code class="highlight"><c- k>auto</c-><c- o>&amp;&amp;</c-> <c- n>res</c-> <c- o>=</c-> <c- k>co_await</c-> <c- n>std</c-><c- o>::</c-><c- n>move</c-><c- p>(</c-><c- n>s</c-><c- p>)</c-></code>, then suspends the coroutine and evaluates <code class="highlight"><c- n>execution</c-><c- o>::</c-><c- n>set_value</c-><c- p>(</c-><c- n>std</c-><c- o>::</c-><c- n>move</c-><c- p>(</c-><c- n>r</c-><c- p>),</c-> <c- n>std</c-><c- o>::</c-><c- n>forward</c-><c- o>&lt;</c-><c- k>decltype</c-><c- p>(</c-><c- n>res</c-><c- p>)</c-><c- o>></c-><c- p>(</c-><c- n>res</c-><c- p>))</c-></code>.</p>
          <p>If the call to <code class="highlight"><c- n>execution</c-><c- o>::</c-><c- n>set_value</c-></code> exits with an exception, the coroutine is resumed and the exception is immediately propagated in the context of the coroutine.</p>
          <p>[<i>Note</i>: If the call to <code class="highlight"><c- n>execution</c-><c- o>::</c-><c- n>set_value</c-></code> exits normally, then the <code class="highlight"><i><c- n>connect</c-><c- o>-</c-><c- n>awaitable</c-></i></code> coroutine is never resumed. --<i>end note</i>]</p>
         <li data-md>
-         <p><i>set-error-expr</i> first suspends the coroutine and then executes <code class="highlight"><c- n>execution</c-><c- o>::</c-><c- n>set_error</c-><c- p>((</c-><c- n>R</c-><c- o>&amp;&amp;</c-><c- p>)</c-> <c- n>r</c-><c- p>,</c-> <c- n>std</c-><c- o>::</c-><c- n>move</c-><c- p>(</c-><c- n>ep</c-><c- p>))</c-></code>.</p>
+         <p><i>set-error-expr</i> first suspends the coroutine and then executes <code class="highlight"><c- n>execution</c-><c- o>::</c-><c- n>set_error</c-><c- p>(</c-><c- n>std</c-><c- o>::</c-><c- n>move</c-><c- p>(</c-><c- n>r</c-><c- p>),</c-> <c- n>std</c-><c- o>::</c-><c- n>move</c-><c- p>(</c-><c- n>ep</c-><c- p>))</c-></code>.</p>
          <p>[<i>Note</i>: The <code class="highlight"><i><c- n>connect</c-><c- o>-</c-><c- n>awaitable</c-></i></code> coroutine is never resumed after the call to <code class="highlight"><c- n>execution</c-><c- o>::</c-><c- n>set_error</c-></code>. --<i>end note</i>]</p>
         <li data-md>
          <p><code class="highlight"><i><c- n>operation</c-><c- o>-</c-><c- n>state</c-><c- o>-</c-><c- n>task</c-></i></code> is a type that models <code class="highlight"><c- n>operation_state</c-></code>. Its <code class="highlight"><c- n>execution</c-><c- o>::</c-><c- n>start</c-></code> resumes the <code class="highlight"><i><c- n>connect</c-><c- o>-</c-><c- n>awaitable</c-></i></code> coroutine, advancing it past the initial suspend point.</p>
         <li data-md>
          <p>Let <code class="highlight"><c- n>p</c-></code> be an lvalue reference to the promise of the <code class="highlight"><i><c- n>connect</c-><c- o>-</c-><c- n>awaitable</c-></i></code> coroutine, let <code class="highlight"><c- n>b</c-></code> be a <code class="highlight"><c- k>const</c-></code> lvalue reference to the receiver <code class="highlight"><c- n>r</c-></code>. Then <code class="highlight"><c- n>tag_invoke</c-><c- p>(</c-><c- n>tag</c-><c- p>,</c-> <c- n>p</c-><c- p>,</c-> <c- n>as</c-><c- p>...)</c-></code> is expression-equivalent to <code class="highlight"><c- n>tag</c-><c- p>(</c-><c- n>b</c-><c- p>,</c-> <c- n>as</c-><c- p>...)</c-></code> for any set of arguments <code class="highlight"><c- n>as</c-><c- p>...</c-></code> and for any <code class="highlight"><c- n>tag</c-></code> whose type satisfies <code class="highlight"><i><c- n>forwarding</c-><c- o>-</c-><c- n>receiver</c-><c- o>-</c-><c- n>query</c-></i></code>.</p>
         <li data-md>
-         <p>The expression <code class="highlight"><c- n>p</c-><c- p>.</c-><c- n>unhandled_stopped</c-><c- p>()</c-></code> is expression-equivalent to <code class="highlight"><c- p>(</c-><c- n>execution</c-><c- o>::</c-><c- n>set_stopped</c-><c- p>((</c-><c- n>R</c-><c- o>&amp;&amp;</c-><c- p>)</c-> <c- n>r</c-><c- p>),</c-> <c- n>noop_coroutine</c-><c- p>())</c-></code>.</p>
+         <p>The expression <code class="highlight"><c- n>p</c-><c- p>.</c-><c- n>unhandled_stopped</c-><c- p>()</c-></code> is expression-equivalent to <code class="highlight"><c- p>(</c-><c- n>execution</c-><c- o>::</c-><c- n>set_stopped</c-><c- p>(</c-><c- n>std</c-><c- o>::</c-><c- n>move</c-><c- p>(</c-><c- n>r</c-><c- p>)),</c-> <c- n>noop_coroutine</c-><c- p>())</c-></code>.</p>
         <li data-md>
          <p>For some expression <code class="highlight"><c- n>e</c-></code>, the expression <code class="highlight"><c- n>p</c-><c- p>.</c-><c- n>await_transform</c-><c- p>(</c-><c- n>e</c-><c- p>)</c-></code> is expression-equivalent to <code class="highlight"><c- n>tag_invoke</c-><c- p>(</c-><c- n>as_awaitable</c-><c- p>,</c-> <c- n>e</c-><c- p>,</c-> <c- n>p</c-><c- p>)</c-></code> if that expression is well-formed; otherwise, it is expression-equivalent to <code class="highlight"><c- n>e</c-></code>.</p>
        </ol>
@@ -7018,6 +7014,8 @@ are all well-formed.</p>
     <li data-md>
      <p><code class="highlight"><c- n>execution</c-><c- o>::</c-><c- n>on</c-></code> is used to adapt a sender into a sender that will start the input sender on an execution agent belonging to a specific execution context.</p>
     <li data-md>
+     <p>Let <code class="highlight"><i><c- n>replace</c-><c- o>-</c-><c- n>scheduler</c-></i><c- p>(</c-><c- n>e</c-><c- p>,</c-> <c- n>sch</c-><c- p>)</c-></code> be an expression denoting an object <code class="highlight"><c- n>e</c->'</code> such that <code class="highlight"><c- n>execution</c-><c- o>::</c-><c- n>get_scheduler</c-><c- p>(</c-><c- n>e</c-><c- p>)</c-></code> returns a copy of <code class="highlight"><c- n>sch</c-></code>, and <code class="highlight"><c- n>tag_invoke</c-><c- p>(</c-><c- n>tag</c-><c- p>,</c-> <c- n>e</c->'<c- p>,</c-> <c- n>args</c-><c- p>...)</c-></code> is expression-equivalent to <code class="highlight"><c- n>tag</c-><c- p>(</c-><c- n>e</c-><c- p>,</c-> <c- n>args</c-><c- p>...)</c-></code> for all arguments <code class="highlight"><c- n>args</c-><c- p>...</c-></code> and for all <code class="highlight"><c- n>tag</c-></code> whose type satisfies <code class="highlight"><i><c- n>forwarding</c-><c- o>-</c-><c- n>env</c-><c- o>-</c-><c- n>query</c-></i></code> and is not <code class="highlight"><c- n>execution</c-><c- o>::</c-><c- n>get_scheduler_t</c-></code>.</p>
+    <li data-md>
      <p>The name <code class="highlight"><c- n>execution</c-><c- o>::</c-><c- n>on</c-></code> denotes a customization point object. For some subexpressions <code class="highlight"><c- n>sch</c-></code> and <code class="highlight"><c- n>s</c-></code>, let <code class="highlight"><c- n>Sch</c-></code> be <code class="highlight"><c- k>decltype</c-><c- p>((</c-><c- n>sch</c-><c- p>))</c-></code> and <code class="highlight"><c- n>S</c-></code> be <code class="highlight"><c- k>decltype</c-><c- p>((</c-><c- n>s</c-><c- p>))</c-></code>. If <code class="highlight"><c- n>Sch</c-></code> does not satisfy <code class="highlight"><c- n>execution</c-><c- o>::</c-><c- n>scheduler</c-></code>, or <code class="highlight"><c- n>S</c-></code> does not satisfy <code class="highlight"><c- n>execution</c-><c- o>::</c-><c- n>sender</c-></code>, <code class="highlight"><c- n>execution</c-><c- o>::</c-><c- n>on</c-></code> is ill-formed. Otherwise, the expression <code class="highlight"><c- n>execution</c-><c- o>::</c-><c- n>on</c-><c- p>(</c-><c- n>sch</c-><c- p>,</c-> <c- n>s</c-><c- p>)</c-></code> is expression-equivalent to:</p>
      <ol>
       <li data-md>
@@ -7039,20 +7037,35 @@ started, the behavior of calling <code class="highlight"><c- n>execution</c-><c-
            <p><code class="highlight"><c- n>execution</c-><c- o>::</c-><c- n>set_error</c-><c- p>(</c-><c- n>r</c-><c- p>,</c-> <c- n>e</c-><c- p>)</c-></code> is expression-equivalent to <code class="highlight"><c- n>execution</c-><c- o>::</c-><c- n>set_error</c-><c- p>(</c-><c- n>out_r</c-><c- p>,</c-> <c- n>e</c-><c- p>)</c-></code>.</p>
           <li data-md>
            <p><code class="highlight"><c- n>execution</c-><c- o>::</c-><c- n>set_stopped</c-><c- p>(</c-><c- n>r</c-><c- p>)</c-></code> is expression-equivalent to <code class="highlight"><c- n>execution</c-><c- o>::</c-><c- n>set_stopped</c-><c- p>(</c-><c- n>out_r</c-><c- p>)</c-></code>.</p>
+          <li data-md>
+           <p><code class="highlight"><c- n>execution</c-><c- o>::</c-><c- n>get_env</c-><c- p>(</c-><c- n>r</c-><c- p>)</c-></code> is expression-equivalent to <code class="highlight"><c- n>execution</c-><c- o>::</c-><c- n>get_env</c-><c- p>(</c-><c- n>out_r</c-><c- p>)</c-></code>.</p>
          </ol>
         <li data-md>
          <p>Calls <code class="highlight"><c- n>execution</c-><c- o>::</c-><c- n>schedule</c-><c- p>(</c-><c- n>sch</c-><c- p>)</c-></code>, which results in <code class="highlight"><c- n>s2</c-></code>. It then calls <code class="highlight"><c- n>execution</c-><c- o>::</c-><c- n>connect</c-><c- p>(</c-><c- n>s2</c-><c- p>,</c-> <c- n>r</c-><c- p>)</c-></code>, resulting in <code class="highlight"><c- n>op_state2</c-></code>.</p>
         <li data-md>
          <p><code class="highlight"><c- n>op_state2</c-></code> is wrapped by a new operation state, <code class="highlight"><c- n>op_state1</c-></code>, that is returned to the caller.</p>
+        <li data-md>
+         <p><code class="highlight"><c- n>r2</c-></code> is a receiver that wraps a reference to <code class="highlight"><c- n>out_r</c-></code> and forwards all
+receiver completion-signals to it. In addition, <code class="highlight"><c- n>execution</c-><c- o>::</c-><c- n>get_env</c-><c- p>(</c-><c- n>r2</c-><c- p>)</c-></code> returns <code class="highlight"><i><c- n>replace</c-><c- o>-</c-><c- n>scheduler</c-></i><c- p>(</c-><c- n>e</c-><c- p>,</c-> <c- n>sch</c-><c- p>)</c-></code>.</p>
+        <li data-md>
+         <p>When <code class="highlight"><c- n>execution</c-><c- o>::</c-><c- n>start</c-></code> is called on <code class="highlight"><c- n>op_state1</c-></code>, it calls <code class="highlight"><c- n>execution</c-><c- o>::</c-><c- n>start</c-></code> on <code class="highlight"><c- n>op_state2</c-></code>.</p>
+        <li data-md>
+         <p>The lifetime of <code class="highlight"><c- n>op_state2</c-></code>, once constructed, lasts until either <code class="highlight"><c- n>op_state3</c-></code> is constructed or <code class="highlight"><c- n>op_state1</c-></code> is destroyed, whichever comes first. The lifetime of <code class="highlight"><c- n>op_state3</c-></code>, once constructed, lasts until <code class="highlight"><c- n>op_state1</c-></code> is destroyed.</p>
        </ol>
       <li data-md>
-       <p><code class="highlight"><c- n>r2</c-></code> is a receiver that wraps a reference to <code class="highlight"><c- n>out_r</c-></code> and forwards all
-   receiver completion-signals to it. In addition, <code class="highlight"><c- n>execution</c-><c- o>::</c-><c- n>get_env</c-><c- p>(</c-><c- n>r2</c-><c- p>)</c-></code> returns an object <code class="highlight"><c- n>e</c-></code> such that <code class="highlight"><c- n>execution</c-><c- o>::</c-><c- n>get_scheduler</c-><c- p>(</c-><c- n>e</c-><c- p>)</c-></code> returns a copy of <code class="highlight"><c- n>sch</c-></code>, and <code class="highlight"><c- n>tag_invoke</c-><c- p>(</c-><c- n>tag</c-><c- p>,</c-> <c- n>e</c-><c- p>,</c-> <c- n>args</c-><c- p>...)</c-></code> is expression-equivalent to <code class="highlight"><c- n>tag</c-><c- p>(</c-><c- n>e</c-><c- p>,</c-> <c- n>args</c-><c- p>...)</c-></code> for all arguments <code class="highlight"><c- n>args</c-><c- p>...</c-></code> and for all <code class="highlight"><c- n>tag</c-></code> whose type
-   satisfies <code class="highlight"><i><c- n>forwarding</c-><c- o>-</c-><c- n>env</c-><c- o>-</c-><c- n>query</c-></i></code> and is not <code class="highlight"><c- n>execution</c-><c- o>::</c-><c- n>get_scheduler_t</c-></code>.</p>
-      <li data-md>
-       <p>When <code class="highlight"><c- n>execution</c-><c- o>::</c-><c- n>start</c-></code> is called on <code class="highlight"><c- n>op_state1</c-></code>, it calls <code class="highlight"><c- n>execution</c-><c- o>::</c-><c- n>start</c-></code> on <code class="highlight"><c- n>op_state2</c-></code>.</p>
-      <li data-md>
-       <p>The lifetime of <code class="highlight"><c- n>op_state2</c-></code>, once constructed, lasts until either <code class="highlight"><c- n>op_state3</c-></code> is constructed or <code class="highlight"><c- n>op_state1</c-></code> is destroyed, whichever comes first. The lifetime of <code class="highlight"><c- n>op_state3</c-></code>, once constructed, lasts until <code class="highlight"><c- n>op_state1</c-></code> is destroyed.</p>
+       <p>Given subexpressions <code class="highlight"><c- n>s1</c-></code> and <code class="highlight"><c- n>e</c-></code>, where <code class="highlight"><c- n>s1</c-></code> is a sender returned from <code class="highlight"><c- n>on</c-></code> or a copy of such, let <code class="highlight"><c- n>S1</c-></code> be <code class="highlight"><c- k>decltype</c-><c- p>((</c-><c- n>s1</c-><c- p>))</c-></code>.
+Let <code class="highlight"><c- n>E</c->'</code> be <code class="highlight"><c- k>decltype</c-><c- p>((</c-><i><c- n>replace</c-><c- o>-</c-><c- n>scheduler</c-></i><c- p>(</c-><c- n>e</c-><c- p>,</c-> <c- n>sch</c-><c- p>)))</c-></code>.
+Then the type of <code class="highlight"><c- n>tag_invoke</c-><c- p>(</c-><c- n>get_completion_signatures</c-><c- p>,</c-> <c- n>s1</c-><c- p>,</c-> <c- n>e</c-><c- p>)</c-></code> shall be:</p>
+<pre class="highlight"><c- n>make_completion_signatures</c-><c- o>&lt;</c->
+  <c- n>copy_cvref_t</c-><c- o>&lt;</c-><c- n>S1</c-><c- p>,</c-> <c- n>S</c-><c- o>></c-><c- p>,</c->
+  <c- n>E</c->'<c- p>,</c->
+  <c- n>make_completion_signatures</c-><c- o>&lt;</c->
+    <c- n>schedule_result_t</c-><c- o>&lt;</c-><c- n>Sch</c-><c- o>></c-><c- p>,</c->
+    <c- n>E</c-><c- p>,</c->
+    <c- n>completion_signatures</c-><c- o>&lt;</c-><c- n>set_error_t</c-><c- p>(</c-><c- n>exception_ptr</c-><c- p>)</c-><c- o>></c-><c- p>,</c->
+    <i><c- n>no</c-><c- o>-</c-><c- n>value</c-><c- o>-</c-><c- n>completions</c-></i><c- o>>></c-><c- p>;</c->
+</pre>
+       <p>where <code class="highlight"><i><c- n>no</c-><c- o>-</c-><c- n>value</c-><c- o>-</c-><c- n>completions</c-></i><c- o>&lt;</c-><c- n>As</c-><c- p>...</c-><c- o>></c-></code> names the type <code class="highlight"><c- n>completion_signatures</c-><c- o>&lt;></c-></code> for any set of types <code class="highlight"><c- n>As</c-><c- p>...</c-></code>.</p>
      </ol>
    </ol>
    <h5 class="heading settled" data-level="10.8.5.4" id="spec-execution.senders.adapt.transfer"><span class="secno">10.8.5.4. </span><span class="content"><code class="highlight"><c- n>execution</c-><c- o>::</c-><c- n>transfer</c-></code> <b>[exec.transfer]</b></span><a class="self-link" href="#spec-execution.senders.adapt.transfer"></a></h5>
@@ -7673,8 +7686,9 @@ function types in <code class="highlight"><c- n>Sigs</c-><i><sub><c- n>i</c-></s
 return types are <i>not</i> <code class="highlight"><c- n>set_value_t</c-></code>, and let <code class="highlight"><c- n>Ws</c-><c- p>...</c-></code> be
 the unique set of types in <code class="highlight"><c- p>[</c-><c- n>Sigs2</c-><i><sub><c- n>0</c-></sub></i><c- p>...,</c-> <c- n>Sigs2</c-><i><sub><c- n>1</c-></sub></i><c- p>...,</c-> <c- p>...</c-> <c- n>Sigs2</c-><i><sub><c- n>n</c-><c- mf>-1</c-></sub></i><c- mf>.</c-><c- p>..,</c-> <c- n>set_error_t</c-><c- p>(</c-><c- n>exception_ptr</c-><c- p>),</c-> <c- n>set_stopped_t</c-><c- p>()]</c-></code>, where <code class="highlight"><i><c- n>n</c-></i></code> is <code class="highlight"><c- k>sizeof</c-><c- p>...(</c-><c- n>Ss</c-><c- p>)</c-></code>. If any <code class="highlight"><c- n>C</c-><i><sub><c- n>i</c-></sub></i></code> is <code class="highlight"><c- mi>0</c-></code>, then the type of <code class="highlight"><c- n>tag_invoke</c-><c- p>(</c-><c- n>get_completion_signatures</c-><c- p>,</c-> <c- n>s2</c-><c- p>,</c-> <c- n>e</c-><c- p>)</c-></code> shall be <code class="highlight"><c- n>completion_signatures</c-><c- o>&lt;</c-><c- n>Ws</c-><c- p>...</c-><c- o>></c-></code>.</p>
           <li data-md>
-           <p>Otherwise, let <code class="highlight"><c- n>V</c-><i><sub><c- n>i</c-></sub></i><c- p>...</c-></code> be the function
-argument types of the single type in <code class="highlight"><c- n>Sigs</c-><i><sub><c- n>i</c-></sub></i><c- p>...</c-></code> for which the return type is <code class="highlight"><c- n>set_value_t</c-></code>. Then the type of <code class="highlight"><c- n>tag_invoke</c-><c- p>(</c-><c- n>get_completion_signatures</c-><c- p>,</c-> <c- n>s2</c-><c- p>,</c-> <c- n>e</c-><c- p>)</c-></code> shall be <code class="highlight"><c- n>completion_signatures</c-><c- o>&lt;</c-><c- n>Ws</c-><c- p>...,</c-> <c- n>set_value_t</c-><c- p>(</c-><c- n>V</c-><i><sub><c- n>0</c-></sub></i><c- p>...,</c-> <c- n>V</c-><i><sub><c- n>1</c-></sub></i><c- p>...,</c-> <c- p>...</c-> <c- n>V</c-><i><sub><c- n>n</c-><c- mf>-1</c-></sub></i><c- mf>.</c-><c- p>..)</c-><c- o>></c-></code>.</p>
+           <p>Otherwise, let <code class="highlight"><c- n>V</c-><i><sub><c- n>i</c-></sub></i><c- p>...</c-></code> be the
+function argument types of the single type in <code class="highlight"><c- n>Sigs</c-><i><sub><c- n>i</c-></sub></i><c- p>...</c-></code> for which the return
+type is <code class="highlight"><c- n>set_value_t</c-></code>. Then the type of <code class="highlight"><c- n>tag_invoke</c-><c- p>(</c-><c- n>get_completion_signatures</c-><c- p>,</c-> <c- n>s2</c-><c- p>,</c-> <c- n>e</c-><c- p>)</c-></code> shall be <code class="highlight"><c- n>completion_signatures</c-><c- o>&lt;</c-><c- n>Ws</c-><c- p>...,</c-> <c- n>set_value_t</c-><c- p>(</c-><c- n>decay_t</c-><c- o>&lt;</c-><c- n>V</c-><i><sub><c- n>0</c-></sub></i><c- o>>&amp;&amp;</c-><c- p>...,</c-> <c- n>decay_t</c-><c- o>&lt;</c-><c- n>V</c-><i><sub><c- n>1</c-></sub></i><c- o>>&amp;&amp;</c-><c- p>...,</c-> <c- p>...</c-> <c- n>decay_t</c-><c- o>&lt;</c-><c- n>V</c-><i><sub><c- n>n</c-><c- mi>-1</c-></sub></i><c- o>>&amp;&amp;</c-><c- p>...)</c-><c- o>></c-></code>.</p>
          </ol>
        </ol>
      </ol>
@@ -8555,14 +8569,10 @@ of all the <code class="highlight"><c- n>completion_signatures</c-></code> insta
        <p>The object to which <code class="highlight"><i><c- n>REC</c-></i><c- p>(</c-><i><c- n>o</c-></i><c- p>)</c-></code> refers remains valid for the lifetime of the object to which <code class="highlight"><i><c- n>o</c-></i></code> refers.</p>
       <li data-md>
        <p>The type <code class="highlight"><i><c- n>run</c-><c- o>-</c-><c- n>loop</c-><c- o>-</c-><c- n>opstate</c-></i><c- o>&lt;</c-><c- n>R</c-><c- o>></c-></code> overrides <code class="highlight"><i><c- n>run</c-><c- o>-</c-><c- n>loop</c-><c- o>-</c-><c- n>opstate</c-><c- o>-</c-><c- n>base</c-></i><c- o>::</c-><c- n>execute</c-><c- p>()</c-></code> such that <code class="highlight"><i><c- n>o</c-></i><c- p>.</c-><c- n>execute</c-><c- p>()</c-></code> is equivalent to the following:</p>
-<pre class="highlight"><c- k>try</c-> <c- p>{</c->
-  <c- k>if</c-> <c- p>(</c-><c- n>execution</c-><c- o>::</c-><c- n>get_stop_token</c-><c- p>(</c-><i><c- n>REC</c-></i><c- p>(</c-><i><c- n>o</c-></i><c- p>)).</c-><c- n>stop_requested</c-><c- p>())</c-> <c- p>{</c->
-    <c- n>execution</c-><c- o>::</c-><c- n>set_stopped</c-><c- p>(</c-><c- n>std</c-><c- o>::</c-><c- n>move</c-><c- p>(</c-><i><c- n>REC</c-></i><c- p>(</c-><i><c- n>o</c-></i><c- p>)));</c->
-  <c- p>}</c-> <c- k>else</c-> <c- p>{</c->
-    <c- n>execution</c-><c- o>::</c-><c- n>set_value</c-><c- p>(</c-><c- n>std</c-><c- o>::</c-><c- n>move</c-><c- p>(</c-><i><c- n>REC</c-></i><c- p>(</c-><i><c- n>o</c-></i><c- p>)));</c->
-  <c- p>}</c->
-<c- p>}</c-> <c- k>catch</c-><c- p>(...)</c-> <c- p>{</c->
-  <c- n>execution</c-><c- o>::</c-><c- n>set_error</c-><c- p>(</c-><c- n>std</c-><c- o>::</c-><c- n>move</c-><c- p>(</c-><i><c- n>REC</c-></i><c- p>(</c-><i><c- n>o</c-></i><c- p>)),</c-> <c- n>current_exception</c-><c- p>());</c->
+<pre class="highlight"><c- k>if</c-> <c- p>(</c-><c- n>execution</c-><c- o>::</c-><c- n>get_stop_token</c-><c- p>(</c-><i><c- n>REC</c-></i><c- p>(</c-><i><c- n>o</c-></i><c- p>)).</c-><c- n>stop_requested</c-><c- p>())</c-> <c- p>{</c->
+  <c- n>execution</c-><c- o>::</c-><c- n>set_stopped</c-><c- p>(</c-><c- n>std</c-><c- o>::</c-><c- n>move</c-><c- p>(</c-><i><c- n>REC</c-></i><c- p>(</c-><i><c- n>o</c-></i><c- p>)));</c->
+<c- p>}</c-> <c- k>else</c-> <c- p>{</c->
+  <c- n>execution</c-><c- o>::</c-><c- n>set_value</c-><c- p>(</c-><c- n>std</c-><c- o>::</c-><c- n>move</c-><c- p>(</c-><i><c- n>REC</c-></i><c- p>(</c-><i><c- n>o</c-></i><c- p>)));</c->
 <c- p>}</c->
 </pre>
       <li data-md>
@@ -8737,7 +8747,7 @@ of all the <code class="highlight"><c- n>completion_signatures</c-></code> insta
          <p><b><code class="highlight"><i><c- n>sender</c-><c- o>-</c-><c- n>awaitable</c-></i><c- o>::</c-><i><c- n>sender</c-><c- o>-</c-><c- n>awaitable</c-></i><c- p>(</c-><c- n>S</c-><c- o>&amp;&amp;</c-> <c- n>s</c-><c- p>,</c-> <c- n>P</c-><c- o>&amp;</c-> <c- n>p</c-><c- p>)</c-></code></b></p>
          <ul>
           <li data-md>
-           <p><i>Effects:</i> initializes <code class="highlight"><c- n>state_</c-></code> with <code class="highlight"><c- n>connect</c-><c- p>((</c-><c- n>S</c-><c- o>&amp;&amp;</c-><c- p>)</c-> <c- n>s</c-><c- p>,</c-> <i><c- n>awaitable</c-><c- o>-</c-><c- n>receiver</c-></i><c- p>{</c-><c- o>&amp;</c-><c- n>result_</c-><c- p>,</c-> <c- n>coroutine_handle</c-><c- o>&lt;</c-><c- n>P</c-><c- o>>::</c-><c- n>from_promise</c-><c- p>(</c-><c- n>p</c-><c- p>)})</c-></code>.</p>
+           <p><i>Effects:</i> initializes <code class="highlight"><c- n>state_</c-></code> with <code class="highlight"><c- n>connect</c-><c- p>(</c-><c- n>std</c-><c- o>::</c-><c- n>forward</c-><c- o>&lt;</c-><c- n>S</c-><c- o>></c-><c- p>(</c-><c- n>s</c-><c- p>),</c-> <i><c- n>awaitable</c-><c- o>-</c-><c- n>receiver</c-></i><c- p>{</c-><c- o>&amp;</c-><c- n>result_</c-><c- p>,</c-> <c- n>coroutine_handle</c-><c- o>&lt;</c-><c- n>P</c-><c- o>>::</c-><c- n>from_promise</c-><c- p>(</c-><c- n>p</c-><c- p>)})</c-></code>.</p>
          </ul>
         <li data-md>
          <p><b><code class="highlight"><c- n>value_t</c-> <i><c- n>sender</c-><c- o>-</c-><c- n>awaitable</c-></i><c- o>::</c-><c- n>await_resume</c-><c- p>()</c-></code></b></p>
