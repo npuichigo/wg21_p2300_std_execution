@@ -7,7 +7,9 @@ Status: D
 Group: WG21
 Audience: SG1, LEWG
 Editor: Michał Dominiak, griwes@griwes.info
+Editor: Georgy Evtushenko, evtushenko.georgy@gmail.com
 Editor: Lewis Baker, lewissbaker@gmail.com
+Editor: Lucian Radu Teodorescu, lucteo@lucteo.ro
 Editor: Lee Howes, xrikcus@gmail.com
 Editor: Kirk Shoop, kirk.shoop@gmail.com
 Editor: Michael Garland, mgarland@nvidia.com
@@ -481,15 +483,8 @@ class _then_receiver
   friend exec::receiver_adaptor<_then_receiver, R>;
   F f_;
 
-  template <class... As>
-  using _completions =
-    exex::completion_signatures<
-      exec::set_value_t(std::invoke_result_t<F, As...>),
-      exec::set_error_t(std::exception_ptr)>;
-
   // Customize set_value by invoking the callable and passing the result to the inner receiver
   template<class... As>
-    requires exec::receiver_of<R, _completions<As...>>
   void set_value(As&&... as) && noexcept try {
     exec::set_value(std::move(*this).base(), std::invoke((F&&) f_, (As&&) as...));
   } catch(...) {
@@ -507,24 +502,24 @@ struct _then_sender {
   S s_;
   F f_;
 
+  template <class... Args>
+    using _set_value_t = exec::completion_signatures<
+      exec::set_value_t(std::invoke_result_t<F, Args...>)>;
+
+  // Compute the completion signatures
+  template<class Env>
+  friend auto tag_invoke(exec::get_completion_signatures_t, _then_sender&&, Env)
+    -> exec::make_completion_signatures<S, Env,
+        exec::completion_signatures<exec::set_error_t(std::exception_ptr)>,
+        _set_value_t>;
+
   // Connect:
-  template<class R>
-    requires exec::sender_to<S, _then_receiver<R, F>>
+  template<exec::receiver R>
   friend auto tag_invoke(exec::connect_t, _then_sender&& self, R r)
     -> exec::connect_result_t<S, _then_receiver<R, F>> {
       return exec::connect(
         (S&&) self.s_, _then_receiver<R, F>{(R&&) r, (F&&) self.f_});
   }
-
-  // Compute the completion signatures
-  template <class...Args>
-    using _set_value = exec::set_value_t(std::invoke_result_t<F, Args...>);
-
-  template<class Env>
-  friend auto tag_invoke(exec::get_completion_signatures_t, _then_sender&&, Env)
-    -> exec::make_completion_signatures<S, Env,
-        exec::completion_signatures<exec::set_error_t(std::exception_ptr)>,
-        _set_value>;
 };
 
 template<exec::sender S, class F>
@@ -625,22 +620,23 @@ struct _retry_sender {
   S s_;
   explicit _retry_sender(S s) : s_((S&&) s) {}
 
-  template<class R>
-    requires exec::sender_to<S&, R>
-  friend _op<S, R> tag_invoke(exec::connect_t, _retry_sender&& self, R r) {
-    return {(S&&) self.s_, (R&&) r};
-  }
-
-  template <class> using _void = void;
-  template <class... Ts> using _value = exec::set_value_t(Ts...);
+  template <class... Ts>
+    using _value_t =
+      exec::completion_signatures<exec::set_value_t(Ts...)>;
+  template <class>
+    using _error_t = exec::completion_signatures<>;
 
   // Declare the signatures with which this sender can complete
   template <class Env>
   friend auto tag_invoke(exec::get_completion_signatures_t, const _retry_sender&, Env)
-    -> exec::make_completion_signatures<
-        S&, Env,
+    -> exec::make_completion_signatures<S&, Env,
         exec::completion_signatures<exec::set_error_t(std::exception_ptr)>,
-        _value, _void>;
+        _value_t, _error_t>;
+
+  template<exec::receiver R>
+  friend _op<S, R> tag_invoke(exec::connect_t, _retry_sender&& self, R r) {
+    return {(S&&) self.s_, (R&&) r};
+  }
 };
 
 template<exec::sender S>
@@ -4087,8 +4083,8 @@ namespace std::execution {
         copy_constructible&lt;remove_cvref_t&lt;S>> &&
         equality_comparable&lt;remove_cvref_t&lt;S>> &&
         requires(S&& s, const get_completion_scheduler_t&lt;set_value_t> tag) {
-          { execution::schedule((S&&) s) } -> sender;
-          { tag_invoke(tag, execution::schedule((S&&) s)) } -> same_as&lt;remove_cvref_t&lt;S>>;
+          { execution::schedule(std::forward&lt;S>(s)) } -> sender;
+          { tag_invoke(tag, execution::schedule(std::forward&lt;S>(s))) } -> same_as&lt;remove_cvref_t&lt;S>>;
         };
     </pre>
 
@@ -4528,7 +4524,7 @@ enum class forward_progress_guarantee {
           name the same type as `error_types_of_t<S, no_env, Variant2>`, and
       * `completion_signatures_of_t<S, E>::sends_stopped` shall have the same
           value as `completion_signatures_of_t<S, no_env>::sends_stopped`.
-10. [<i>Note</i>: The types <code>Args<i><sub>i</sub></i>...</code> and <code>E<i><sub>i</sub></i>...</code> captured in `value_types` and `error_types` can appear in any order. 
+10. [<i>Note</i>: The types <code>Args<i><sub>i</sub></i>...</code> and <code>E<i><sub>i</sub></i>...</code> captured in `value_types` and `error_types` can appear in any order.
      For example, a sender that can yield, in case of an error, either `exception_ptr` or `error_code` can have `error_types` be either `Variant<exception_ptr, error_code>` or `Variant<error_code, exception_ptr>`. --<i>end note</i>]
 
 #### `dependent_completion_signatures` <b>[exec.depsndtraits]</b> #### {#spec-exec.depsndtraitst}
@@ -4581,13 +4577,13 @@ template &lt;class E>  // arguments are not associated entities ([lib.tmpl-heads
 
         where <code><i>connect-awaitable-promise</i></code> is the promise type of <code><i>connect-awaitable</i></code>, and where <code><i>connect-awaitable</i></code> suspends at the <i>initial suspends point</i> ([dcl.fct.def.coroutine]), and:
 
-          1. <i>set-value-expr</i> first evaluates `co_await (S&&) s`, then suspends the coroutine and evaluates `execution::set_value((R&&) r)` if <code><i>await-result-type</i>&lt;S, <i>connect-awaitable-promise</i>></code> is <code><i>cv</i> void</code>; otherwise, it evaluates `auto&& res = co_await (S&&) s`, then suspends the coroutine and evaluates `execution::set_value((R&&) r, (decltype(res)) res)`.
+          1. <i>set-value-expr</i> first evaluates `co_await std::move(s)`, then suspends the coroutine and evaluates `execution::set_value(std::move(r))` if <code><i>await-result-type</i>&lt;S, <i>connect-awaitable-promise</i>></code> is <code><i>cv</i> void</code>; otherwise, it evaluates `auto&& res = co_await std::move(s)`, then suspends the coroutine and evaluates `execution::set_value(std::move(r), std::forward<decltype(res)>(res))`.
 
             If the call to `execution::set_value` exits with an exception, the coroutine is resumed and the exception is immediately propagated in the context of the coroutine.
 
             [<i>Note</i>: If the call to `execution::set_value` exits normally, then the <code><i>connect-awaitable</i></code> coroutine is never resumed. --<i>end note</i>]
 
-          2. <i>set-error-expr</i> first suspends the coroutine and then executes `execution::set_error((R&&) r, std::move(ep))`.
+          2. <i>set-error-expr</i> first suspends the coroutine and then executes `execution::set_error(std::move(r), std::move(ep))`.
 
             [<i>Note</i>: The <code><i>connect-awaitable</i></code> coroutine is never resumed after the call to `execution::set_error`. --<i>end note</i>]
 
@@ -4595,7 +4591,7 @@ template &lt;class E>  // arguments are not associated entities ([lib.tmpl-heads
 
           4. Let `p` be an lvalue reference to the promise of the <code><i>connect-awaitable</i></code> coroutine, let `b` be a `const` lvalue reference to the receiver `r`. Then `tag_invoke(tag, p, as...)` is expression-equivalent to `tag(b, as...)` for any set of arguments `as...` and for any `tag` whose type satisfies <code><i>forwarding-receiver-query</i></code>.
 
-          5. The expression `p.unhandled_stopped()` is expression-equivalent to `(execution::set_stopped((R&&) r), noop_coroutine())`.
+          5. The expression `p.unhandled_stopped()` is expression-equivalent to `(execution::set_stopped(std::move(r)), noop_coroutine())`.
 
           6. For some expression `e`, the expression `p.await_transform(e)` is expression-equivalent to `tag_invoke(as_awaitable, e, p)` if that expression is well-formed; otherwise, it is expression-equivalent to `e`.
 
@@ -4883,7 +4879,10 @@ are all well-formed.
 
 1. `execution::on` is used to adapt a sender into a sender that will start the input sender on an execution agent belonging to a specific execution context.
 
-2. The name `execution::on` denotes a customization point object. For some subexpressions `sch` and `s`, let `Sch` be `decltype((sch))` and `S` be `decltype((s))`. If `Sch` does not satisfy `execution::scheduler`, or `S` does not satisfy `execution::sender`,
+2. Let <code><i>replace-scheduler</i>(e, sch)</code> be an expression denoting an object `e'` such that `execution::get_scheduler(e)` returns a copy of `sch`, and `tag_invoke(tag, e', args...)` is expression-equivalent to `tag(e, args...)`
+    for all arguments `args...` and for all `tag` whose type satisfies <code><i>forwarding-env-query</i></code> and is not `execution::get_scheduler_t`.
+
+3. The name `execution::on` denotes a customization point object. For some subexpressions `sch` and `s`, let `Sch` be `decltype((sch))` and `S` be `decltype((s))`. If `Sch` does not satisfy `execution::scheduler`, or `S` does not satisfy `execution::sender`,
     `execution::on` is ill-formed. Otherwise, the expression `execution::on(sch, s)` is expression-equivalent to:
 
     1. `tag_invoke(execution::on, sch, s)`, if that expression is valid. If the function selected above does not return a sender which starts `s` on an execution agent of the associated execution context of `sch` when
@@ -4901,22 +4900,37 @@ are all well-formed.
 
             3. `execution::set_stopped(r)` is expression-equivalent to `execution::set_stopped(out_r)`.
 
+            4. `execution::get_env(r)` is expression-equivalent to `execution::get_env(out_r)`.
+
         2. Calls `execution::schedule(sch)`, which results in `s2`. It then calls `execution::connect(s2, r)`, resulting in `op_state2`.
 
         3. `op_state2` is wrapped by a new operation state, `op_state1`, that is returned to the caller.
 
-      2. `r2` is a receiver that wraps a reference to `out_r` and forwards all
-           receiver completion-signals to it. In addition,
-           `execution::get_env(r2)` returns an object `e` such that
-           `execution::get_scheduler(e)` returns a copy of `sch`, and
-           `tag_invoke(tag, e, args...)` is expression-equivalent to `tag(e,
-           args...)` for all arguments `args...` and for all `tag` whose type
-           satisfies <code><i>forwarding-env-query</i></code> and is not
-           `execution::get_scheduler_t`.
+        4. `r2` is a receiver that wraps a reference to `out_r` and forwards all
+            receiver completion-signals to it. In addition,
+            `execution::get_env(r2)` returns <code><i>replace-scheduler</i>(e, sch)</code>.
 
-      3. When `execution::start` is called on `op_state1`, it calls `execution::start` on `op_state2`.
+        5. When `execution::start` is called on `op_state1`, it calls `execution::start` on `op_state2`.
 
-      4. The lifetime of `op_state2`, once constructed, lasts until either `op_state3` is constructed or `op_state1` is destroyed, whichever comes first. The lifetime of `op_state3`, once constructed, lasts until `op_state1` is destroyed.
+        6. The lifetime of `op_state2`, once constructed, lasts until either `op_state3` is constructed or `op_state1` is destroyed, whichever comes first. The lifetime of `op_state3`, once constructed, lasts until `op_state1` is destroyed.
+
+    3. Given subexpressions `s1` and `e`, where `s1` is a sender returned from `on` or a copy of such, let `S1` be `decltype((s1))`.
+        Let `E'` be <code>decltype((<i>replace-scheduler</i>(e, sch)))</code>.
+        Then the type of `tag_invoke(get_completion_signatures, s1, e)` shall be:
+
+        <pre highlight="c++">
+        make_completion_signatures&lt;
+          copy_cvref_t&lt;S1, S>,
+          E',
+          make_completion_signatures&lt;
+            schedule_result_t&lt;Sch>,
+            E,
+            completion_signatures&lt;set_error_t(exception_ptr)>,
+            <i>no-value-completions</i>>>;
+        </pre>
+
+        where <code><i>no-value-completions</i>&lt;As...></code> names the type `completion_signatures<>`
+        for any set of types `As...`.
 
 #### `execution::transfer` <b>[exec.transfer]</b> #### {#spec-execution.senders.adapt.transfer}
 
@@ -5239,9 +5253,9 @@ are all well-formed.
             For `execution::let_error`, let `set-cpo` be `execution::set_error`.
             For `execution::let_stopped`, let `set-cpo` be `execution::set_stopped`.
             Let <code><i>signal</i></code> be one of `execution::set_value`, `execution::set_error`, or `execution::set_stopped`.
-    
+
         2. Let `r` be an rvalue of a receiver type `R` such that:
-    
+
             1. When <code><i>set-cpo</i>(r, args...)</code> is called, the receiver `r` decay-copies `args...` into `op_state2` as `args'...`, then calls `invoke(f', args'...)`, resulting in a sender `s3`.
                 It then calls `execution::connect(s3, std::move(out_r'))`, resulting in an operation state `op_state3`.
                 `op_state3` is saved as a part of `op_state2`.
@@ -5252,7 +5266,7 @@ are all well-formed.
             2. <code><i>signal</i>(r, args...)</code> is expression-equivalent to <code><i>signal</i>(std::move(out_r'), args...)</code>, when <code><i>signal</i></code> is different from <code><i>set-cpo</i></code>.
 
         3. <code><i>let-cpo</i>(s, f)</code>  returns a sender `s2` such that:
-        
+
             1. If the expression `execution::connect(s, r)` is ill-formed, `execution::connect(s2, out_r)` is ill-formed.
 
             2. Otherwise, let `op_state2` be the result of `execution::connect(s, r)`. `execution::connect(s2, out_r)` returns an operation state `op_state` that stores `op_state2`. `execution::start(op_state)` is expression-equivalent to `execution::start(op_state2)`.
@@ -5273,7 +5287,7 @@ are all well-formed.
                 let `Sigs2...` be the set of function types in `Sigs...` whose return type
                 is <code><i>set-cpo</i></code>, and let `Rest...` be the set of function types
                 in `Sigs...` but not `Sigs2...`.
-            
+
             3. For each <code>Sig2<i><sub>i</sub></i></code> in `Sigs2...`, let
                 <code>Vs<i><sub>i</sub></i>...</code> be the set of function
                 arguments in <code>Sig2<i><sub>i</sub></i></code> and let
@@ -5599,12 +5613,15 @@ are all well-formed.
                 `tag_invoke(get_completion_signatures, s2, e)` shall be
                 `completion_signatures<Ws...>`.
 
-            4. Otherwise, let <code>V<i><sub>i</sub></i>...</code> be the function
-                argument types of the single type in <code>Sigs<i><sub>i</sub></i>...</code>
-                for which the return type is `set_value_t`. Then the type of
+            4. Otherwise, let <code>V<i><sub>i</sub></i>...</code> be the
+                function argument types of the single type in
+                <code>Sigs<i><sub>i</sub></i>...</code> for which the return
+                type is `set_value_t`. Then the type of
                 `tag_invoke(get_completion_signatures, s2, e)` shall be
-                <code>completion_signatures&lt;Ws..., set_value_t(V<i><sub>0</sub></i>...,
-                V<i><sub>1</sub></i>..., ... V<i><sub>n-1</sub></i>...)></code>.
+                <code>completion_signatures&lt;Ws...,
+                set_value_t(decay_t&lt;V<i><sub>0</sub></i>>&amp;&amp;...,
+                decay_t&lt;V<i><sub>1</sub></i>>&amp;&amp;..., ...
+                decay_t&lt;V<i><sub>n-1</sub></i>>&amp;&amp;...)></code>.
 
 3. The name `execution::when_all_with_variant` denotes a customization point object. For some subexpressions `s...`, let `S` be `decltype((s))`. If any type <code>S<i><sub>i</sub></i></code> in `S...` does not satisfy `execution::sender`,
     `execution::when_all_with_variant` is ill-formed. Otherwise, the expression `execution::when_all_with_variant(s...)` is expression-equivalent to:
@@ -6505,14 +6522,10 @@ are all well-formed.
     * The type <code><i>run-loop-opstate</i>&lt;R></code> overrides <code><i>run-loop-opstate-base</i>::execute()</code> such that <code><i>o</i>.execute()</code> is equivalent to the following:
 
         <pre highlight="c++">
-        try {
-          if (execution::get_stop_token(<i>REC</i>(<i>o</i>)).stop_requested()) {
-            execution::set_stopped(std::move(<i>REC</i>(<i>o</i>)));
-          } else {
-            execution::set_value(std::move(<i>REC</i>(<i>o</i>)));
-          }
-        } catch(...) {
-          execution::set_error(std::move(<i>REC</i>(<i>o</i>)), current_exception());
+        if (execution::get_stop_token(<i>REC</i>(<i>o</i>)).stop_requested()) {
+          execution::set_stopped(std::move(<i>REC</i>(<i>o</i>)));
+        } else {
+          execution::set_value(std::move(<i>REC</i>(<i>o</i>)));
         }
         </pre>
 
@@ -6695,7 +6708,7 @@ are all well-formed.
 
         2. <b><code><i>sender-awaitable</i>::<i>sender-awaitable</i>(S&& s, P& p)</code></b>
 
-            - <i>Effects:</i> initializes `state_` with <code>connect((S&&) s, <i>awaitable-receiver</i>{&result_, coroutine_handle&lt;P>::from_promise(p)})</code>.
+            - <i>Effects:</i> initializes `state_` with <code>connect(std::forward&lt;S>(s), <i>awaitable-receiver</i>{&result_, coroutine_handle&lt;P>::from_promise(p)})</code>.
 
         3. <b><code>value_t <i>sender-awaitable</i>::await_resume()</code></b>
 
